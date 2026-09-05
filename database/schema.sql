@@ -33,16 +33,23 @@ CREATE TABLE risk_factors (
     risk_factor_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
-    type VARCHAR(100) NOT NULL,
-    INDEX idx_risk_factors_type (type)
+    factor_type VARCHAR(100) NOT NULL,
+    INDEX idx_risk_factors_factor_type (factor_type)
 );
 
 CREATE TABLE tests (
     test_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
-    purpose TEXT,
-    type VARCHAR(100) NOT NULL
+    purpose TEXT
+);
+
+CREATE TABLE treatments (
+    treatment_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    treatment_type VARCHAR(100) NOT NULL,
+    INDEX idx_treatments_type (treatment_type)
 );
 
 CREATE TABLE condition_symptoms (
@@ -81,4 +88,14 @@ CREATE TABLE condition_tests (
     FOREIGN KEY (condition_id) REFERENCES conditions(condition_id) ON DELETE CASCADE,
     FOREIGN KEY (test_id) REFERENCES tests(test_id) ON DELETE CASCADE,
     FOREIGN KEY (evidence_id) REFERENCES evidence(evidence_id) ON DELETE SET NULL
+);
+
+CREATE TABLE condition_treatments (
+    condition_id INT NOT NULL,
+    treatment_id INT NOT NULL,
+    priority INT NOT NULL DEFAULT 1,
+    notes TEXT,
+    PRIMARY KEY (condition_id, treatment_id),
+    FOREIGN KEY (condition_id) REFERENCES conditions(condition_id) ON DELETE CASCADE,
+    FOREIGN KEY (treatment_id) REFERENCES treatments(treatment_id) ON DELETE CASCADE
 );

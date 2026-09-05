@@ -1,22 +1,54 @@
-# Standalone Clinical Decision Support System
+# Clinical Decision Support System
 
-This is a local, independent academic prototype for physician support. It is not an autonomous diagnostic system and must not be used for clinical decisions without clinician review and properly sourced, validated medical evidence.
+This project implements a physician-support backend for a normalized CDSS knowledge base. It stores conditions, symptoms, risk factors, tests, and treatments in MySQL-compatible SQLAlchemy models and exposes the core APIs needed to rank candidate diagnoses from patient information.
 
-## What is included
+This is not a medical diagnostic engine and it is not a clinically validated probability model. It only combines relationships and weights explicitly stored in the database.
 
-- FastAPI endpoints for knowledge lookup and `/evaluate`.
-- SQLAlchemy models for MySQL-compatible relational storage.
-- Normalized condition, symptom, risk-factor, test, evidence, and relationship tables.
-- Explainable configurable ranking based on symptom matches, risk-factor matches, stored prior contribution, severity, and urgency.
-- Test recommendations and traceable evidence references.
-- SQLite-compatible automated tests that do not require a production database.
-- Clearly labeled synthetic SQL seed data only.
+## 1. Database setup
 
-Patient input is request-scoped. It is not stored in the medical knowledge tables and this project does not create a patient-record system.
+The project defaults to SQLite for local development and can be configured for MySQL in the environment file.
 
-## Local setup
+MySQL example:
 
-From this directory in PowerShell:
+```bash
+mysql -u root -p
+CREATE DATABASE clinical_cdss;
+CREATE USER 'cdss_user'@'localhost' IDENTIFIED BY 'change_me';
+GRANT ALL PRIVILEGES ON clinical_cdss.* TO 'cdss_user'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+The schema is defined in `database/schema.sql` and is created by SQLAlchemy on startup when using the configured database URL.
+
+## 2. Environment variables
+
+Use `.env.example` as the template:
+
+```text
+CDSS_DATABASE_URL=mysql+pymysql://cdss_user:change_me@localhost:3306/clinical_cdss
+CDSS_SQL_ECHO=false
+CDSS_DEMO_DATA=false
+```
+
+The settings are loaded from `.env` by `app/config.py` and use the `CDSS_` prefix.
+
+## 3. How to start MySQL
+
+On Windows with a local MySQL installation, start the service from Services or use the MySQL client directly.
+
+Example:
+
+```powershell
+net start MySQL80
+```
+
+Then verify connectivity:
+
+```powershell
+mysql -u cdss_user -p -D clinical_cdss
+```
+
+## 4. How to install Python dependencies
 
 ```powershell
 python -m venv .venv
@@ -25,86 +57,151 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-The default configuration uses `sqlite:///./clinical_cdss.db`, which is convenient for local experimentation. The `.env.example` uses a MySQL URL instead:
-
-```text
-CDSS_DATABASE_URL=mysql+pymysql://cdss_user:change_me@localhost:3306/clinical_cdss
-CDSS_SQL_ECHO=false
-CDSS_DEMO_DATA=false
-```
-
-Replace `change_me` locally; never commit a real password. Create the MySQL database and user separately, then either let SQLAlchemy create tables on API startup or run `database/schema.sql` with your MySQL client. Run `database/seed.sql` only when you intentionally want the synthetic demo rows.
-
-## Run the API
+## 5. How to start FastAPI
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python -m uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs` for the interactive API documentation. Health check:
+Open http://127.0.0.1:8000/docs for the interactive Swagger UI.
 
-```text
-GET /health
-```
+## 6. Available endpoints
 
-## Example evaluation request
+Core endpoints:
+
+- `GET /health`
+- `POST /evaluate`
+- `GET /conditions`
+- `GET /conditions/{id}`
+- `POST /conditions`
+- `POST /conditions/complete`
+- `GET /symptoms`
+- `POST /symptoms`
+- `GET /risk-factors`
+- `POST /risk-factors`
+- `GET /tests`
+- `POST /tests`
+- `GET /treatments`
+- `POST /treatments`
+- `POST /conditions/{condition_id}/symptoms`
+- `POST /conditions/{condition_id}/risk-factors`
+- `POST /conditions/{condition_id}/tests`
+- `POST /conditions/{condition_id}/treatments`
+- `GET /conditions/{condition_id}/symptoms`
+- `GET /conditions/{condition_id}/risk-factors`
+- `GET /conditions/{condition_id}/tests`
+- `GET /conditions/{condition_id}/treatments`
+
+## 7. Example POST /evaluate request
 
 ```json
 {
-  "symptoms": ["DEMO symptom one"],
-  "risk_factors": ["DEMO age factor"],
-  "demographics": {"age": 65},
-  "measurements": {"DEMO measurement": 1}
+  "symptoms": ["fever", "cough", "shortness of breath"],
+  "risk_factors": {
+    "smoking": true,
+    "age": 65,
+    "bmi": 28,
+    "systolic_bp": 150,
+    "diastolic_bp": 95
+  }
 }
 ```
 
-The API returns `ranked_conditions`. Each result includes a configurable `likelihood_score`, separate `severity`, `urgency`, and `clinical_priority_score`, matched inputs, recommended tests, evidence references, and an explanation of the score. These scores are ranking signals, not validated clinical probabilities.
+Structured risk factors are normalized to the risk-factor names provided in the database. The system matches relationship names that are explicitly stored.
 
-Example response shape:
+## 8. Example POST /evaluate response
 
 ```json
 {
-  "disclaimer": "This is an academic physician-support prototype...",
+  "disclaimer": "This is an initial software ranking model for physician support only; it is not a medically validated diagnostic probability model.",
   "ranked_conditions": [
     {
-      "condition": "DEMO Condition A",
-      "likelihood_score": 3.1,
-      "severity": 50.0,
-      "urgency": 40.0,
-      "clinical_priority_score": 4.495,
-      "matched_symptoms": ["DEMO symptom one"],
-      "relevant_risk_factors": ["DEMO age factor"],
-      "recommended_tests": [],
-      "evidence": [],
-      "explanation": "..."
+      "condition": "Pneumonia",
+      "likelihood_score": 0.82,
+      "severity": 8,
+      "urgency": 7,
+      "priority_score": 0.71,
+      "matched_symptoms": [
+        {"name": "fever", "weight": 0.8},
+        {"name": "cough", "weight": 0.9}
+      ],
+      "matched_risk_factors": [
+        {"name": "smoking", "weight": 0.7}
+      ],
+      "recommended_tests": [
+        {
+          "test_id": 2,
+          "name": "Chest X-ray",
+          "description": "Radiographic assessment",
+          "purpose": "Confirm pulmonary findings",
+          "priority": 1,
+          "associated_conditions": ["Pneumonia"]
+        }
+      ],
+      "treatments": [
+        {
+          "treatment_id": 5,
+          "name": "Antibiotic therapy",
+          "description": "Standard treatment according to local protocol",
+          "treatment_type": "medication",
+          "priority": 1,
+          "notes": "Use per clinician guidance",
+          "associated_condition": "Pneumonia"
+        }
+      ],
+      "explanation": "This result is based on the weighted relationship values explicitly stored for the condition, not a medically validated probability model."
     }
   ]
 }
 ```
 
-The example response is illustrative. Real response contents depend on the rows loaded into the configured database.
+## 9. Example condition creation request
 
-## Tests
+```json
+{
+  "name": "Pneumonia",
+  "description": "Lower respiratory tract infection",
+  "severity": 8,
+  "urgency": 7
+}
+```
+
+## 10. Explanation of the ranking algorithm
+
+The ranking is intentionally transparent:
+
+- It matches supplied symptoms to `condition_symptoms` rows.
+- It matches supplied risk factors to `condition_risk_factors` rows.
+- It computes a normalized symptom score as the matched symptom weight divided by the total relevant symptom weight for the condition.
+- It computes a normalized risk-factor score as the matched risk-factor weight divided by the total risk-factor weight for the condition.
+- It combines them with configurable weights:
+
+```text
+final_score = (symptom_score * 0.70) + (risk_factor_score * 0.30)
+```
+
+These constants are stored in the ranking module and are easy to adjust later as evidence or clinical logic is added.
+
+## 11. Explanation of severity and urgency
+
+Each condition stores its own `severity` and `urgency` on a scale of 1 to 10. These values are not mixed into the diagnosis likelihood itself. They are used separately in a priority calculation so the system distinguishes:
+
+- how strongly the patient matches the condition
+- how clinically severe or urgent the condition is
+
+The priority score is a software prioritization signal, not a medically validated triage tool.
+
+## 12. Important warning
+
+The scoring model is an initial software model and is NOT a medically validated diagnostic probability model.
+
+It is only intended to make stored clinical relationships and weights explainable, traceable, and easy to extend with future evidence sources, Bayesian logic, likelihood ratios, audit logging, patient records, and authentication.
+
+## 13. Tests
 
 ```powershell
 python -m pytest -q
 ```
 
-The tests use an in-memory SQLite database and cover ranking, explanations, relationship traversal, recommendations, API evaluation, and invalid input handling. They do not connect to MySQL.
-
-## Schema design
-
-`conditions`, `symptoms`, `risk_factors`, `tests`, and `evidence` are independent entities. The `condition_symptoms`, `condition_risk_factors`, and `condition_tests` tables implement many-to-many relationships with composite primary keys and foreign keys. Relationship-specific weights and evidence references stay on those association tables instead of being duplicated in the main entities.
-
-Risk factors are named concepts with a `type`; request values remain separate in `risk_factors`, `demographics`, and `measurements`. The initial engine matches known names and does not pretend that age, blood pressure, BMI, or similar values are binary flags. Value-aware rules can be added later without changing the normalized schema.
-
-## Important TODOs before any serious use
-
-- Replace all `DEMO` rows with reviewed, properly sourced evidence.
-- Define and validate scoring weights with clinical subject-matter experts.
-- Add evidence versioning, provenance review status, and audit logging.
-- Add authentication, authorization, rate limiting, and production migrations.
-- Add structured value/range matching for measurements and demographic data.
-- Add clinician review workflows and stronger integration tests against a controlled MySQL instance.
-- Do not claim diagnostic accuracy or use the demonstration ranking as a medical probability.
+The test suite uses an in-memory SQLite database and verifies condition creation, relationships, evaluation, ranking order, duplicate rejection, invalid input, and transaction rollback.
