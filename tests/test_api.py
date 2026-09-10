@@ -165,3 +165,127 @@ def test_complete_condition_transaction_rollback() -> None:
     finally:
         app.dependency_overrides.clear()
         Base.metadata.drop_all(engine)
+
+
+def test_stats_and_details_endpoints() -> None:
+    engine = build_test_db()
+    session_factory = sessionmaker(bind=engine)
+    app.dependency_overrides[get_db] = override_db_factory(session_factory)
+    try:
+        with TestClient(app) as client:
+            stats_initial = client.get("/stats").json()
+            assert stats_initial["conditions"] == 0
+
+            s_res = client.post("/symptoms", json={"name": "Cough", "description": "Productive"})
+            r_res = client.post("/risk-factors", json={"name": "Smoker", "description": "Heavy", "factor_type": "lifestyle"})
+            t_res = client.post("/tests", json={"name": "X-Ray", "description": "Chest imaging", "purpose": "Check lungs"})
+            tx_res = client.post("/treatments", json={"name": "Inhaler", "description": "Bronchodilator", "treatment_type": "medication"})
+            c_res = client.post("/conditions", json={"name": "Bronchitis", "description": "Airway inflammation", "severity": 6, "urgency": 5})
+
+            assert s_res.status_code == 200
+            assert r_res.status_code == 200
+            assert t_res.status_code == 200
+            assert tx_res.status_code == 200
+            assert c_res.status_code == 200
+
+            # Verify enriched fields
+            conds = client.get("/conditions").json()
+            assert conds[0]["severity"] == 6
+            assert conds[0]["urgency"] == 5
+
+            tests_resp = client.get("/tests").json()
+            assert tests_resp[0]["purpose"] == "Check lungs"
+
+            # Link relationships
+            cid = c_res.json()["id"]
+            client.post(f"/conditions/{cid}/symptoms", json={"symptom_id": s_res.json()["id"], "weight": 0.85})
+            client.post(f"/conditions/{cid}/risk-factors", json={"risk_factor_id": r_res.json()["id"], "weight": 0.65})
+            client.post(f"/conditions/{cid}/tests", json={"test_id": t_res.json()["id"], "priority": 1, "purpose": "Inspect airway"})
+            client.post(f"/conditions/{cid}/treatments", json={"treatment_id": tx_res.json()["id"], "priority": 1, "notes": "Use PRN"})
+
+            # Verify details endpoint
+            details = client.get(f"/conditions/{cid}/details").json()
+            assert details["name"] == "Bronchitis"
+            assert details["symptoms"][0]["name"] == "Cough"
+            assert details["symptoms"][0]["weight"] == 0.85
+            assert details["risk_factors"][0]["name"] == "Smoker"
+            assert details["tests"][0]["name"] == "X-Ray"
+            assert details["treatments"][0]["name"] == "Inhaler"
+
+            # Verify stats incremented
+            stats_after = client.get("/stats").json()
+            assert stats_after["conditions"] == 1
+            assert stats_after["symptoms"] == 1
+            assert stats_after["risk_factors"] == 1
+            assert stats_after["tests"] == 1
+            assert stats_after["treatments"] == 1
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(engine)
+
+
+def test_evaluation_records_lifecycle() -> None:
+    engine = build_test_db()
+    session_factory = sessionmaker(bind=engine)
+    app.dependency_overrides[get_db] = override_db_factory(session_factory)
+    try:
+        with TestClient(app) as client:
+            records_before = client.get("/evaluations").json()
+            assert len(records_before) == 0
+
+            save_res = client.post(
+                "/evaluations",
+                json={
+                    "age": 62,
+                    "sex": "Female",
+                    "symptoms": ["Fever", "Cough"],
+                    "risk_factors": ["Smoking"],
+                    "top_condition": "Pneumonia",
+                    "likelihood_score": 0.85,
+                    "priority_score": 0.76,
+                    "results_json": '{"ranked_conditions": [{"condition": "Pneumonia"}]}',
+                },
+            )
+            assert save_res.status_code == 200
+            saved = save_res.json()
+            assert saved["id"] is not None
+            assert saved["top_condition"] == "Pneumonia"
+            assert saved["age"] == 62
+            assert saved["symptoms"] == ["Fever", "Cough"]
+
+            records_after = client.get("/evaluations").json()
+            assert len(records_after) == 1
+            assert records_after[0]["id"] == saved["id"]
+            assert records_after[0]["top_condition"] == "Pneumonia"
+
+            stats = client.get("/stats").json()
+            assert stats["evaluations"] == 1
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(engine)
+
+
+def test_seed_demo_and_frontend_serving() -> None:
+    engine = build_test_db()
+    session_factory = sessionmaker(bind=engine)
+    app.dependency_overrides[get_db] = override_db_factory(session_factory)
+    try:
+        with TestClient(app) as client:
+            seed_res = client.post("/seed-demo")
+            assert seed_res.status_code == 200
+            stats = client.get("/stats").json()
+            assert stats["conditions"] == 5
+            assert stats["symptoms"] >= 10
+            assert stats["risk_factors"] >= 5
+
+            # Test static frontend serving
+            frontend_res = client.get("/")
+            assert frontend_res.status_code == 200
+            assert "Clarity CDSS" in frontend_res.text or "<div id=\"app\">" in frontend_res.text
+
+            app_js_res = client.get("/app.js")
+            assert app_js_res.status_code == 200
+            assert "API_BASE" in app_js_res.text
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(engine)

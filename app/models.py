@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -149,3 +151,18 @@ class ConditionTreatment(Base):
 
     condition: Mapped[Condition] = relationship(back_populates="treatments")
     treatment: Mapped[Treatment] = relationship(back_populates="conditions")
+
+
+class EvaluationRecord(Base):
+    __tablename__ = "evaluation_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sex: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    symptoms: Mapped[str] = mapped_column(Text, nullable=False)
+    risk_factors: Mapped[str] = mapped_column(Text, nullable=False)
+    top_condition: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    likelihood_score: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    priority_score: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    results_json: Mapped[str | None] = mapped_column(Text, nullable=True)

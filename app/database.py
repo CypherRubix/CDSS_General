@@ -15,11 +15,9 @@ class Base(DeclarativeBase):
 def redact_url_password(database_url: str) -> str:
     try:
         parsed = make_url(database_url)
+        return parsed.render_as_string(hide_password=True)
     except Exception:
         return database_url
-    if parsed.password:
-        parsed.password = "***redacted***"
-    return str(parsed)
 
 
 def build_engine(database_url: str | None = None):
@@ -62,3 +60,35 @@ def init_db() -> None:
             f"{redact_url_password(get_settings().database_url)}"
         ) from exc
     Base.metadata.create_all(bind=engine)
+    try:
+        from sqlalchemy import inspect
+        with engine.begin() as conn:
+            insp = inspect(conn)
+            existing_tables = insp.get_table_names()
+            migrations = {
+                "tests": [
+                    ("type", "VARCHAR(100) NOT NULL DEFAULT 'general'"),
+                ],
+                "conditions": [
+                    ("prior_probability", "DECIMAL(8,6) NULL DEFAULT NULL"),
+                    ("is_demo", "BOOLEAN NOT NULL DEFAULT 0"),
+                ],
+                "condition_symptoms": [
+                    ("frequency", "DECIMAL(5,2) NULL DEFAULT NULL"),
+                    ("sensitivity", "DECIMAL(5,2) NULL DEFAULT NULL"),
+                    ("specificity", "DECIMAL(5,2) NULL DEFAULT NULL"),
+                    ("evidence_id", "INT NULL DEFAULT NULL"),
+                ],
+                "condition_risk_factors": [
+                    ("relationship_description", "TEXT NULL"),
+                    ("evidence_id", "INT NULL DEFAULT NULL"),
+                ],
+            }
+            for table_name, col_defs in migrations.items():
+                if table_name in existing_tables:
+                    existing_cols = {c["name"] for c in insp.get_columns(table_name)}
+                    for col_name, col_spec in col_defs:
+                        if col_name not in existing_cols:
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_spec}"))
+    except Exception:
+        pass

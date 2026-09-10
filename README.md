@@ -204,29 +204,51 @@ It is only intended to make stored clinical relationships and weights explainabl
 python -m pytest -q
 ```
 
-## 14. Frontend
+## 14. Frontend and Local Launching
 
-The frontend is a dependency-free browser app in `frontend/`. Start the API from
-the `clinical_cdss` directory, then serve the frontend from the repository root
-on one of the allowed local origins:
+The frontend is directly served by FastAPI at the root URL, or can optionally be served independently.
+
+### Option A: One-step launch (Recommended)
+
+Run the unified launcher from the `clinical_cdss` directory:
 
 ```powershell
-# Terminal 1
-cd ..
-.\.venv\Scripts\Activate.ps1
-cd clinical_cdss
+python run.py
+```
+
+Then open **http://127.0.0.1:8000** in your browser.
+
+- **Unified Web UI**: http://127.0.0.1:8000
+- **Interactive Swagger API Docs**: http://127.0.0.1:8000/docs
+
+### Option B: Direct Uvicorn
+
+```powershell
+python -m uvicorn app.main:app --reload
+```
+
+Open **http://127.0.0.1:8000**.
+
+### Option C: Independent frontend server
+
+```powershell
+# Terminal 1: Backend
 python -m uvicorn app.main:app --reload
 
-# Terminal 2
-cd clinical_cdss\frontend
+# Terminal 2: Frontend
+cd frontend
 python -m http.server 5500
 ```
 
-Open http://127.0.0.1:5500. The browser app uses `GET /symptoms`,
-`GET /risk-factors`, `POST /evaluate`, all five resource list endpoints, and
-the matching resource creation endpoints. Condition result tests and treatments
-come directly from the evaluation response. Resource detail editing and delete
-actions are not shown because the current backend does not expose update/delete
-routes.
+Open **http://127.0.0.1:5500**. Full CORS support is enabled.
 
-The test suite uses an in-memory SQLite database and verifies condition creation, relationships, evaluation, ranking order, duplicate rejection, invalid input, and transaction rollback.
+### Features Available in the Frontend:
+1. **Overview Dashboard**: Live database record counts (Conditions, Symptoms, Risk Factors, Tests, Treatments, Patient Records) and database status.
+2. **Patient Evaluation**: Enter patient demographics, search and select symptoms and risk factors, and run diagnostic assessments.
+3. **Evaluation Results**: View transparent condition ranking, likelihood match percentage, severity, urgency, recommended diagnostic tests, and potential treatments.
+4. **Save to Patient Records**: Click "Save to Patient Records" to persist clinical assessments to the database.
+5. **Patient Records History**: Browse and retrieve past patient evaluations, including demographics, symptoms, and top matched conditions.
+6. **Knowledge Base Explorer**: Browse and search all 5 clinical resource tables with full severity, urgency, and purpose attributes.
+7. **Add Records**: Add new Conditions, Symptoms, Risk Factors, Tests, and Treatments directly to the database via interactive modal dialogs.
+8. **Condition Relationship Linking**: Click "View Details & Links" on any condition to view and add linked symptoms (with weights), risk factors, diagnostic tests (with priorities), and treatments.
+9. **Sample Data Seeder**: Automatically seeds standard clinical conditions upon first run if empty, or on-demand via the "Load Sample Medical Knowledge" button.

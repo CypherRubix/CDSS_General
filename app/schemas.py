@@ -10,6 +10,9 @@ class ResourceResponse(BaseModel):
     name: str
     description: str | None = None
     type: str | None = None
+    severity: int | None = None
+    urgency: int | None = None
+    purpose: str | None = None
 
 
 class ConditionCreate(BaseModel):
@@ -205,3 +208,74 @@ class RankedCondition(BaseModel):
 class EvaluationResponse(BaseModel):
     disclaimer: str
     ranked_conditions: list[RankedCondition]
+
+
+class KnowledgeStatsResponse(BaseModel):
+    conditions: int
+    symptoms: int
+    risk_factors: int
+    tests: int
+    treatments: int
+    evaluations: int
+
+
+class ConditionDetailSymptom(BaseModel):
+    symptom_id: int
+    name: str
+    weight: float
+
+
+class ConditionDetailRiskFactor(BaseModel):
+    risk_factor_id: int
+    name: str
+    weight: float
+
+
+class ConditionDetailTest(BaseModel):
+    test_id: int
+    name: str
+    priority: int
+    purpose: str | None = None
+
+
+class ConditionDetailTreatment(BaseModel):
+    treatment_id: int
+    name: str
+    priority: int
+    notes: str | None = None
+
+
+class ConditionDetailResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    severity: int
+    urgency: int
+    symptoms: list[ConditionDetailSymptom] = Field(default_factory=list)
+    risk_factors: list[ConditionDetailRiskFactor] = Field(default_factory=list)
+    tests: list[ConditionDetailTest] = Field(default_factory=list)
+    treatments: list[ConditionDetailTreatment] = Field(default_factory=list)
+
+
+class EvaluationRecordCreate(BaseModel):
+    age: int | None = None
+    sex: str | None = None
+    symptoms: list[str] = Field(default_factory=list)
+    risk_factors: list[str] = Field(default_factory=list)
+    top_condition: str | None = None
+    likelihood_score: float | None = None
+    priority_score: float | None = None
+    results_json: str | None = None
+
+
+class EvaluationRecordResponse(BaseModel):
+    id: int
+    created_at: str
+    age: int | None = None
+    sex: str | None = None
+    symptoms: list[str] = Field(default_factory=list)
+    risk_factors: list[str] = Field(default_factory=list)
+    top_condition: str | None = None
+    likelihood_score: float | None = None
+    priority_score: float | None = None
+    results_json: str | None = None
