@@ -19,6 +19,7 @@ from .condition_management import (
     create_test,
     create_treatment,
 )
+from .database import get_db, init_db
 from .database import SessionLocal, get_db, init_db
 from .diagnosis_engine import evaluate_patient
 from .models import Condition, ConditionRiskFactor, ConditionSymptom, ConditionTest, ConditionTreatment, RiskFactor, Symptom, Test, Treatment
@@ -45,6 +46,7 @@ from .schemas import (
     TestCreate,
     TreatmentCreate,
 )
+from .services import DuplicateResourceError, InvalidInputError, KnowledgeRepository, ResourceNotFoundError
 from .services import (
     DuplicateResourceError,
     InvalidInputError,
@@ -61,6 +63,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:8001", "http://localhost:8001"],
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
@@ -98,6 +101,7 @@ def health(db: Session = Depends(get_db)) -> dict[str, str]:
 @app.get("/conditions", response_model=list[ResourceResponse])
 def list_conditions(db: Session = Depends(get_db)):
     return [
+        ResourceResponse(id=item.condition_id, name=item.name, description=item.description)
         ResourceResponse(
             id=item.condition_id,
             name=item.name,
@@ -188,6 +192,7 @@ def get_risk_factor(risk_factor_id: int, db: Session = Depends(get_db)):
 @app.get("/tests", response_model=list[ResourceResponse])
 def list_tests(db: Session = Depends(get_db)):
     return [
+        ResourceResponse(id=item.test_id, name=item.name, description=item.description)
         ResourceResponse(
             id=item.test_id,
             name=item.name,

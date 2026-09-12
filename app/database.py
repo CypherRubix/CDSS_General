@@ -18,6 +18,9 @@ def redact_url_password(database_url: str) -> str:
         return parsed.render_as_string(hide_password=True)
     except Exception:
         return database_url
+    if parsed.password:
+        parsed.password = "***redacted***"
+    return str(parsed)
 
 
 def build_engine(database_url: str | None = None):

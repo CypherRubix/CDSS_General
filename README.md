@@ -204,8 +204,12 @@ It is only intended to make stored clinical relationships and weights explainabl
 python -m pytest -q
 ```
 
+## 14. Frontend
 ## 14. Frontend and Local Launching
 
+The frontend is a dependency-free browser app in `frontend/`. Start the API from
+the `clinical_cdss` directory, then serve the frontend from the repository root
+on one of the allowed local origins:
 The frontend is directly served by FastAPI at the root URL, or can optionally be served independently.
 
 ### Option A: One-step launch (Recommended)
@@ -213,6 +217,10 @@ The frontend is directly served by FastAPI at the root URL, or can optionally be
 Run the unified launcher from the `clinical_cdss` directory:
 
 ```powershell
+# Terminal 1
+cd ..
+.\.venv\Scripts\Activate.ps1
+cd clinical_cdss
 python run.py
 ```
 
@@ -227,6 +235,8 @@ Then open **http://127.0.0.1:8000** in your browser.
 python -m uvicorn app.main:app --reload
 ```
 
+# Terminal 2
+cd clinical_cdss\frontend
 Open **http://127.0.0.1:8000**.
 
 ### Option C: Independent frontend server
@@ -240,8 +250,15 @@ cd frontend
 python -m http.server 5500
 ```
 
+Open http://127.0.0.1:5500. The browser app uses `GET /symptoms`,
+`GET /risk-factors`, `POST /evaluate`, all five resource list endpoints, and
+the matching resource creation endpoints. Condition result tests and treatments
+come directly from the evaluation response. Resource detail editing and delete
+actions are not shown because the current backend does not expose update/delete
+routes.
 Open **http://127.0.0.1:5500**. Full CORS support is enabled.
 
+The test suite uses an in-memory SQLite database and verifies condition creation, relationships, evaluation, ranking order, duplicate rejection, invalid input, and transaction rollback.
 ### Features Available in the Frontend:
 1. **Overview Dashboard**: Live database record counts (Conditions, Symptoms, Risk Factors, Tests, Treatments, Patient Records) and database status.
 2. **Patient Evaluation**: Enter patient demographics, search and select symptoms and risk factors, and run diagnostic assessments.
