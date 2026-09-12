@@ -58,43 +58,54 @@ function escapeHtml(value = '') {
   }[char]));
 }
 
+function titleBar() {
+  return `
+    <header class="app-header">
+      <div class="brand-block">
+        <a class="brand" href="#" data-page="home">
+          <span class="brand-mark"></span>
+          <span>clarity<span class="brand-dot">.</span></span>
+        </a>
+        <span class="title-tag">Clinical Decision Support</span>
+      </div>
+
+      <nav class="top-nav" aria-label="Main navigation">
+        <a href="#" data-page="home">Home</a>
+        <a href="#" data-page="overview">Workspace</a>
+        <a href="#" data-page="knowledge">Knowledge Base</a>
+        <a href="#" data-page="evaluate">Evaluation</a>
+      </nav>
+
+      <div class="header-actions">
+        <button class="pill pill-light" data-page="evaluate">Start Evaluation</button>
+      </div>
+    </header>
+  `;
+}
+
 function render() {
   if (!app) return;
 
-  if (state.page === 'home') {
-    app.innerHTML = landingPage();
-  } else if (state.page === 'overview') {
-    app.innerHTML = overviewPage();
-  } else if (state.page === 'evaluate') {
-    app.innerHTML = evaluationPage();
-  } else if (state.page === 'results') {
-    app.innerHTML = resultsPage();
-  } else if (state.page === 'knowledge') {
-    app.innerHTML = knowledgePage('conditions');
-  } else if (state.page.startsWith('knowledge:')) {
-    const key = state.page.split(':')[1] || 'conditions';
-    app.innerHTML = knowledgePage(key);
-  } else {
-    app.innerHTML = overviewPage();
-  }
+  const content = state.page === 'home'
+    ? landingPage()
+    : state.page === 'overview'
+      ? overviewPage()
+      : state.page === 'evaluate'
+        ? evaluationPage()
+        : state.page === 'results'
+          ? resultsPage()
+          : state.page === 'knowledge'
+            ? knowledgePage('conditions')
+            : state.page.startsWith('knowledge:')
+              ? knowledgePage(state.page.split(':')[1] || 'conditions')
+              : overviewPage();
 
+  app.innerHTML = `${titleBar()}<main class="main-shell">${content}</main>`;
   bindEvents();
 }
 
 function landingPage() {
   return `
-    <header class="app-header">
-      <a class="brand" href="#" data-page="home"><span class="brand-mark"></span>clarity<span style="color:var(--green-deep)">.</span></a>
-      <nav class="top-nav">
-        <a href="#" data-page="overview">Workspace</a>
-        <a href="#" data-page="knowledge">Knowledge Base</a>
-        <a href="#" data-page="evaluate">Evaluate</a>
-      </nav>
-      <div class="header-actions">
-        <button class="pill" data-page="evaluate">Start Evaluation</button>
-      </div>
-    </header>
-
     <main class="landing">
       <section class="hero">
         <div>
