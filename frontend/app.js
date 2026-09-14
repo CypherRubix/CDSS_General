@@ -17,6 +17,9 @@ const state = {
   results: null,
   error: '',
   loading: false,
+  addType: 'conditions',
+  addLoading: false,
+  addError: '',
   kbQuery: '',
   symptomsQuery: '',
   risksQuery: '',
@@ -73,6 +76,7 @@ function titleBar() {
         <a href="#" data-page="home">Home</a>
         <a href="#" data-page="overview">Workspace</a>
         <a href="#" data-page="knowledge">Knowledge Base</a>
+        <a href="#" data-page="add">Add Records</a>
         <a href="#" data-page="evaluate">Evaluation</a>
       </nav>
 
@@ -94,6 +98,8 @@ function render() {
         ? evaluationPage()
         : state.page === 'results'
           ? resultsPage()
+          : state.page === 'add'
+            ? addRecordsPage()
           : state.page === 'knowledge'
             ? knowledgePage('conditions')
             : state.page.startsWith('knowledge:')
@@ -365,6 +371,68 @@ function resultsPage() {
   `;
 }
 
+function addRecordsPage() {
+  const config = resourceConfig[state.addType] || resourceConfig.conditions;
+  const fields = state.addType === 'conditions'
+    ? `
+        <div class="field-grid">
+          <label>Name<input name="name" required placeholder="e.g. Pneumonia"></label>
+          <label>Description<textarea name="description" placeholder="Describe this condition"></textarea></label>
+          <label>Severity (1-10)<input name="severity" type="number" min="1" max="10" required value="5"></label>
+          <label>Urgency (1-10)<input name="urgency" type="number" min="1" max="10" required value="5"></label>
+        </div>`
+    : `
+        <label>Name<input name="name" required placeholder="Enter a ${escapeHtml(config.singular)} name"></label>
+        <label>Description<textarea name="description" placeholder="Add an optional description"></textarea></label>
+        ${state.addType === 'risk-factors' ? '<label>Factor type<input name="factor_type" required placeholder="e.g. lifestyle"></label>' : ''}
+        ${state.addType === 'tests' ? '<label>Purpose<textarea name="purpose" placeholder="What is this test used for?"></textarea></label>' : ''}
+        ${state.addType === 'treatments' ? '<label>Treatment type<input name="treatment_type" required placeholder="e.g. medication"></label>' : ''}`;
+
+  return `
+    ${pageHead('Knowledge base', 'Add new records', 'Create new clinical entries that can be used in evaluations and shown in the knowledge base.')}
+    <div class="kb-tabs">
+      ${Object.entries(resourceConfig).map(([key, value]) => `<button class="tab ${key === state.addType ? 'active' : ''}" data-add-type="${key}">${value.label}</button>`).join('')}
+    </div>
+    <section class="panel add-record-panel">
+      <h2>New ${config.singular}</h2>
+      <p>Required fields are marked by the browser before submission.</p>
+      ${state.addError ? `<div class="error">${escapeHtml(state.addError)}</div>` : ''}
+      <form id="add-record-form" class="form-stack">
+        ${fields}
+        <div class="form-actions">
+          <button class="pill" type="submit" ${state.addLoading ? 'disabled' : ''}>${state.addLoading ? 'Saving...' : `Save ${config.singular}`}</button>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+async function submitNewRecord(event) {
+  event.preventDefault();
+  state.addLoading = true;
+  state.addError = '';
+  render();
+
+  const formData = new FormData(event.currentTarget);
+  const payload = Object.fromEntries(formData.entries());
+  if (state.addType === 'conditions') {
+    payload.severity = Number(payload.severity);
+    payload.urgency = Number(payload.urgency);
+  }
+
+  try {
+    await api(`/${state.addType}`, { method: 'POST', body: JSON.stringify(payload) });
+    state.data[state.addType] = await api(`/${state.addType}`);
+    state.stats = await api('/stats');
+    toast(`${resourceConfig[state.addType].singular} saved successfully.`);
+  } catch (error) {
+    state.addError = error.message;
+  } finally {
+    state.addLoading = false;
+    render();
+  }
+}
+
 function resultCard(item, index) {
   const percentage = Math.round((item.likelihood_score || 0) * 100);
   const detail = `
@@ -493,6 +561,15 @@ function bindEvents() {
   });
 
   document.querySelector('#evaluation-form')?.addEventListener('submit', submitEvaluation);
+  document.querySelector('#add-record-form')?.addEventListener('submit', submitNewRecord);
+
+  document.querySelectorAll('[data-add-type]').forEach((el) => {
+    el.onclick = () => {
+      state.addType = el.dataset.addType;
+      state.addError = '';
+      render();
+    };
+  });
 
   document.querySelectorAll('[data-add]').forEach((el) => {
     el.onclick = () => {
