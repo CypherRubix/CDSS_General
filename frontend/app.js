@@ -64,7 +64,7 @@ function titleBar() {
       <div class="brand-block">
         <a class="brand" href="#" data-page="home">
           <span class="brand-mark"></span>
-          <span>clarity<span class="brand-dot">.</span></span>
+          <span>Genassist CDSS</span>
         </a>
         <span class="title-tag">Clinical Decision Support</span>
       </div>

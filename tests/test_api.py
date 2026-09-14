@@ -281,7 +281,7 @@ def test_seed_demo_and_frontend_serving() -> None:
             # Test static frontend serving
             frontend_res = client.get("/")
             assert frontend_res.status_code == 200
-            assert "Clarity CDSS" in frontend_res.text or "<div id=\"app\">" in frontend_res.text
+            assert "Genassist CDSS" in frontend_res.text or "<div id=\"app\">" in frontend_res.text
 
             app_js_res = client.get("/app.js")
             assert app_js_res.status_code == 200
