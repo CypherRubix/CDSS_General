@@ -311,10 +311,31 @@ function evaluationPage() {
   `;
 }
 
+function suggestionMarkup(type, selected, values, query) {
+  return values
+    .filter((item) => item.name.toLowerCase().includes(query.toLowerCase()) && !selected.includes(item.name))
+    .slice(0, 8)
+    .map((item) => `<button type="button" class="suggestion" data-add="${type}" data-value="${escapeHtml(item.name)}">+ ${escapeHtml(item.name)}</button>`)
+    .join('');
+}
+
+function bindAddButtons(root = document) {
+  root.querySelectorAll('[data-add]').forEach((el) => {
+    el.onclick = () => {
+      const type = el.dataset.add;
+      const key = type === 'symptoms' ? 'selectedSymptoms' : 'selectedRisks';
+      const value = el.dataset.value;
+      if (!state[key].includes(value)) {
+        state[key].push(value);
+      }
+      render();
+    };
+  });
+}
+
 function selector(type, selected, values, placeholder) {
   const queryKey = type === 'symptoms' ? 'symptomsQuery' : 'risksQuery';
   const query = state[queryKey] || '';
-  const filtered = values.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()) && !selected.includes(item.name)).slice(0, 8);
 
   return `
     <div class="choice-box">
@@ -325,9 +346,7 @@ function selector(type, selected, values, placeholder) {
       `).join('')}
       <input data-search="${type}" value="${escapeHtml(query)}" placeholder="${escapeHtml(placeholder)}">
     </div>
-    <div class="suggestions">
-      ${filtered.map((item) => `<button type="button" class="suggestion" data-add="${type}" data-value="${escapeHtml(item.name)}">+ ${escapeHtml(item.name)}</button>`).join('')}
-    </div>
+    <div class="suggestions" data-suggestions="${type}">${suggestionMarkup(type, selected, values, query)}</div>
   `;
 }
 
@@ -507,33 +526,35 @@ function knowledgePage(type = 'conditions') {
       </div>
 
       ${state.error ? `<div class="error">${escapeHtml(state.error)}</div>` : ''}
+      ${state.loading ? '<div class="loading">Loading records...</div>' : ''}
 
-      ${state.loading ? '<div class="loading">Loading records...</div>' : filtered.length ? `
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Description</th>
-                <th>${type === 'conditions' ? 'Severity / Urgency' : type === 'risk-factors' ? 'Factor Type' : type === 'tests' ? 'Purpose' : 'Info'}</th>
+      <div class="table-wrap" data-kb-table style="${state.error || state.loading || !filtered.length ? 'display:none;' : ''}">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>${type === 'conditions' ? 'Severity / Urgency' : type === 'risk-factors' ? 'Factor Type' : type === 'tests' ? 'Purpose' : 'Info'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${records.map((item) => `
+              <tr data-kb-row data-search-name="${escapeHtml(item.name.toLowerCase())}" style="${item.name.toLowerCase().includes(query.toLowerCase()) ? '' : 'display:none;'}">
+                <td><strong>${escapeHtml(item.name)}</strong></td>
+                <td>${escapeHtml(item.description || 'No description provided')}</td>
+                <td>
+                  ${type === 'conditions'
+                    ? `${item.severity ?? '—'} / ${item.urgency ?? '—'}`
+                    : escapeHtml(item.type || item.purpose || item.treatment_type || '—')}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              ${filtered.map((item) => `
-                <tr>
-                  <td><strong>${escapeHtml(item.name)}</strong></td>
-                  <td>${escapeHtml(item.description || 'No description provided')}</td>
-                  <td>
-                    ${type === 'conditions'
-                      ? `${item.severity ?? '—'} / ${item.urgency ?? '—'}`
-                      : escapeHtml(item.type || item.purpose || item.treatment_type || '—')}
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      ` : '<div class="empty">No records found in this category.</div>'}
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="empty" data-kb-empty style="${state.error || state.loading || filtered.length ? 'display:none;' : ''}">
+        ${records.length ? 'No matching records found.' : 'No records found in this category.'}
+      </div>
     </section>
   `;
 }
@@ -587,17 +608,7 @@ function bindEvents() {
     };
   });
 
-  document.querySelectorAll('[data-add]').forEach((el) => {
-    el.onclick = () => {
-      const type = el.dataset.add;
-      const key = type === 'symptoms' ? 'selectedSymptoms' : 'selectedRisks';
-      const value = el.dataset.value;
-      if (!state[key].includes(value)) {
-        state[key].push(value);
-      }
-      render();
-    };
-  });
+  bindAddButtons();
 
   document.querySelectorAll('[data-remove]').forEach((el) => {
     el.onclick = () => {
@@ -611,15 +622,36 @@ function bindEvents() {
 
   document.querySelectorAll('[data-search]').forEach((el) => {
     el.oninput = (event) => {
-      const key = event.target.dataset.search === 'symptoms' ? 'symptomsQuery' : 'risksQuery';
+      const type = event.target.dataset.search;
+      const key = type === 'symptoms' ? 'symptomsQuery' : 'risksQuery';
+      const selectedKey = type === 'symptoms' ? 'selectedSymptoms' : 'selectedRisks';
       state[key] = event.target.value;
-      render();
+      const suggestions = document.querySelector(`[data-suggestions="${type}"]`);
+      if (suggestions) {
+        suggestions.innerHTML = suggestionMarkup(type, state[selectedKey], state.data[type] || [], state[key]);
+        bindAddButtons(suggestions);
+      }
     };
   });
 
   document.querySelector('#kb-search')?.addEventListener('input', (event) => {
     state.kbQuery = event.target.value;
-    render();
+    const table = document.querySelector('[data-kb-table]');
+    const empty = document.querySelector('[data-kb-empty]');
+    if (!table || !empty || document.querySelector('.panel .error, .panel .loading')) return;
+
+    const query = state.kbQuery.toLowerCase();
+    const rows = table.querySelectorAll('[data-kb-row]');
+    let visibleCount = 0;
+    rows.forEach((row) => {
+      const visible = row.dataset.searchName.includes(query);
+      row.style.display = visible ? '' : 'none';
+      if (visible) visibleCount += 1;
+    });
+
+    table.style.display = visibleCount ? '' : 'none';
+    empty.style.display = visibleCount ? 'none' : '';
+    empty.textContent = rows.length ? 'No matching records found.' : 'No records found in this category.';
   });
 }
 
