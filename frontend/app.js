@@ -90,6 +90,15 @@ function titleBar() {
 function render() {
   if (!app) return;
 
+  const activeSearch = document.activeElement?.matches('input[data-search], #kb-search')
+    ? {
+      id: document.activeElement.id,
+      type: document.activeElement.dataset.search,
+      selectionStart: document.activeElement.selectionStart,
+      selectionEnd: document.activeElement.selectionEnd,
+    }
+    : null;
+
   const content = state.page === 'home'
     ? landingPage()
     : state.page === 'overview'
@@ -108,6 +117,13 @@ function render() {
 
   app.innerHTML = `${titleBar()}<main class="main-shell">${content}</main>`;
   bindEvents();
+
+  if (activeSearch) {
+    const selector = activeSearch.id ? `#${activeSearch.id}` : `input[data-search="${activeSearch.type}"]`;
+    const input = app.querySelector(selector);
+    input?.focus({ preventScroll: true });
+    input?.setSelectionRange(activeSearch.selectionStart, activeSearch.selectionEnd);
+  }
 }
 
 function landingPage() {
