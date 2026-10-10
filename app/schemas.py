@@ -156,6 +156,9 @@ class CompleteConditionRequest(BaseModel):
 class PatientInput(BaseModel):
     symptoms: list[str] = Field(default_factory=list)
     risk_factors: list[str] | dict[str, Any] = Field(default_factory=list)
+    negative_symptoms: list[str] = Field(default_factory=list)
+    negative_risk_factors: list[str] = Field(default_factory=list)
+    completed_tests: list[str] = Field(default_factory=list)
     demographics: dict[str, Any] = Field(default_factory=dict)
     measurements: dict[str, Any] = Field(default_factory=dict)
 
@@ -171,6 +174,9 @@ class PatientInput(BaseModel):
 class MatchedFactor(BaseModel):
     name: str
     weight: float
+    probability: float | None = None
+    is_positive: bool = True
+    is_proxy: bool = False
 
 
 class TestRecommendationResult(BaseModel):
@@ -178,8 +184,18 @@ class TestRecommendationResult(BaseModel):
     name: str
     description: str | None = None
     purpose: str | None = None
-    priority: int
+    priority: int = 1
     associated_conditions: list[str] = Field(default_factory=list)
+    discriminates_between: list[str] = Field(default_factory=list)
+    information_gain: float | None = None
+    expected_entropy_reduction: float | None = None
+    is_information_gain_calculated: bool = False
+    missing_parameters: bool = False
+    sensitivity: float | None = None
+    specificity: float | None = None
+    cost: float | None = None
+    rationale: str | None = None
+    limitations: list[str] = Field(default_factory=list)
 
 
 class TreatmentRecommendationResult(BaseModel):
@@ -195,19 +211,30 @@ class TreatmentRecommendationResult(BaseModel):
 class RankedCondition(BaseModel):
     condition: str
     likelihood_score: float
+    posterior_probability: float | None = None
+    prior_probability: float | None = None
+    is_probability: bool = True
     severity: int
     urgency: int
     priority_score: float
     matched_symptoms: list[MatchedFactor]
     matched_risk_factors: list[MatchedFactor]
+    absent_symptoms: list[MatchedFactor] = Field(default_factory=list)
+    absent_risk_factors: list[MatchedFactor] = Field(default_factory=list)
+    unrecorded_findings: list[str] = Field(default_factory=list)
+    supporting_evidence: list[str] = Field(default_factory=list)
+    conflicting_evidence: list[str] = Field(default_factory=list)
     recommended_tests: list[TestRecommendationResult]
     treatments: list[TreatmentRecommendationResult]
     explanation: str
+    limitations: list[str] = Field(default_factory=list)
 
 
 class EvaluationResponse(BaseModel):
     disclaimer: str
     ranked_conditions: list[RankedCondition]
+    differential_tests: list[TestRecommendationResult] = Field(default_factory=list)
+    diagnostic_entropy: float | None = None
 
 
 class KnowledgeStatsResponse(BaseModel):

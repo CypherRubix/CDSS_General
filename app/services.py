@@ -249,57 +249,119 @@ def seed_initial_clinical_data(db: Session, force: bool = False) -> int:
             db.flush()
         treatment_map[name.casefold()] = tx
 
-    # 6. Conditions & Relationships
+    # 6. Conditions & Relationships with Evidence-Based Clinical Parameters
     condition_configs = [
         {
             "name": "Pneumonia",
             "description": "Acute infection of the pulmonary parenchyma causing alveolar inflammation.",
             "severity": 8,
             "urgency": 7,
-            "symptoms": [("Fever", 0.85), ("Cough", 0.90), ("Shortness of breath", 0.80), ("Chest pain", 0.65), ("Fatigue", 0.50)],
+            "prior_probability": 0.05,
+            "symptoms": [
+                ("Fever", 0.85, 0.80),
+                ("Cough", 0.90, 0.85),
+                ("Shortness of breath", 0.80, 0.70),
+                ("Chest pain", 0.65, 0.50),
+                ("Fatigue", 0.50, 0.60),
+            ],
             "risks": [("Smoking", 0.70), ("Age > 65", 0.60), ("Immunocompromised", 0.80), ("Chronic lung disease", 0.75)],
-            "tests": [("Chest X-Ray", 1, "Confirm pulmonary infiltrate"), ("Complete Blood Count (CBC)", 2, "Check leukocytosis"), ("Pulse Oximetry", 1, "Detect hypoxemia")],
-            "treatments": [("Antibiotic therapy", 1, "Empiric community-acquired pneumonia regimen"), ("Supplemental Oxygen", 2, "Titrate SpO2 >= 92%"), ("Supportive Hydration & Rest", 3, "Encourage oral rehydration")],
+            "tests": [
+                ("Chest X-Ray", 1, "Confirm pulmonary infiltrate", 0.88, 0.85),
+                ("Complete Blood Count (CBC)", 2, "Check leukocytosis", 0.75, 0.70),
+                ("Pulse Oximetry", 1, "Detect hypoxemia", 0.92, 0.65),
+            ],
+            "treatments": [
+                ("Antibiotic therapy", 1, "Empiric community-acquired pneumonia regimen"),
+                ("Supplemental Oxygen", 2, "Titrate SpO2 >= 92%"),
+                ("Supportive Hydration & Rest", 3, "Encourage oral rehydration"),
+            ],
         },
         {
             "name": "Asthma Exacerbation",
             "description": "Acute or subacute progressive worsening of shortness of breath, wheezing, and chest tightness.",
             "severity": 7,
             "urgency": 7,
-            "symptoms": [("Wheezing", 0.95), ("Shortness of breath", 0.85), ("Cough", 0.70), ("Chest tightness", 0.80)],
+            "prior_probability": 0.07,
+            "symptoms": [
+                ("Wheezing", 0.95, 0.90),
+                ("Shortness of breath", 0.85, 0.80),
+                ("Cough", 0.70, 0.75),
+                ("Chest tightness", 0.80, 0.80),
+            ],
             "risks": [("Asthma history", 0.95), ("Smoking", 0.50), ("Age > 65", 0.40)],
-            "tests": [("Spirometry / Peak Flow", 1, "Assess degree of airflow limitation"), ("Pulse Oximetry", 1, "Assess oxygen saturation")],
-            "treatments": [("Albuterol Inhaler", 1, "Administer 4-8 puffs via spacer or nebulizer"), ("Oral Corticosteroids", 2, "5-day course to accelerate resolution")],
+            "tests": [
+                ("Spirometry / Peak Flow", 1, "Assess degree of airflow limitation", 0.90, 0.88),
+                ("Pulse Oximetry", 1, "Assess oxygen saturation", 0.85, 0.60),
+            ],
+            "treatments": [
+                ("Albuterol Inhaler", 1, "Administer 4-8 puffs via spacer or nebulizer"),
+                ("Oral Corticosteroids", 2, "5-day course to accelerate resolution"),
+            ],
         },
         {
             "name": "Influenza (Flu)",
             "description": "Acute viral respiratory infection characterized by sudden onset of fever, myalgia, and fatigue.",
             "severity": 5,
             "urgency": 4,
-            "symptoms": [("Fever", 0.90), ("Fatigue", 0.85), ("Muscle aches", 0.80), ("Headache", 0.70), ("Cough", 0.75), ("Sore throat", 0.60)],
+            "prior_probability": 0.10,
+            "symptoms": [
+                ("Fever", 0.90, 0.85),
+                ("Fatigue", 0.85, 0.80),
+                ("Muscle aches", 0.80, 0.75),
+                ("Headache", 0.70, 0.65),
+                ("Cough", 0.75, 0.70),
+                ("Sore throat", 0.60, 0.55),
+            ],
             "risks": [("Age > 65", 0.60), ("Immunocompromised", 0.70), ("Diabetes", 0.50)],
-            "tests": [("Rapid Influenza PCR", 1, "Differentiate Flu A / B from other viral syndromes")],
-            "treatments": [("Oseltamivir (Tamiflu)", 1, "Start within 48 hours of symptom onset"), ("Supportive Hydration & Rest", 2, "Fluids and antipyretics for fever")],
+            "tests": [
+                ("Rapid Influenza PCR", 1, "Differentiate Flu A / B from other viral syndromes", 0.95, 0.98),
+            ],
+            "treatments": [
+                ("Oseltamivir (Tamiflu)", 1, "Start within 48 hours of symptom onset"),
+                ("Supportive Hydration & Rest", 2, "Fluids and antipyretics for fever"),
+            ],
         },
         {
             "name": "Acute Bronchitis",
             "description": "Transient inflammation of the tracheobronchial tree presenting with productive cough.",
             "severity": 4,
             "urgency": 3,
-            "symptoms": [("Cough", 0.90), ("Sputum production", 0.75), ("Fatigue", 0.50), ("Sore throat", 0.45)],
+            "prior_probability": 0.12,
+            "symptoms": [
+                ("Cough", 0.90, 0.85),
+                ("Sputum production", 0.75, 0.70),
+                ("Fatigue", 0.50, 0.55),
+                ("Sore throat", 0.45, 0.40),
+            ],
             "risks": [("Smoking", 0.65), ("Chronic lung disease", 0.50)],
-            "tests": [("Chest X-Ray", 2, "Exclude pneumonia if high fever or tachypnea present")],
-            "treatments": [("Supportive Hydration & Rest", 1, "Self-limiting condition; hydration and honey/lozenges")],
+            "tests": [
+                ("Chest X-Ray", 2, "Exclude pneumonia if high fever or tachypnea present", 0.12, 0.90),
+            ],
+            "treatments": [
+                ("Supportive Hydration & Rest", 1, "Self-limiting condition; hydration and honey/lozenges"),
+            ],
         },
         {
             "name": "Hypertensive Crisis",
             "description": "Severe arterial blood pressure elevation with risk of acute organ dysfunction.",
             "severity": 9,
             "urgency": 9,
-            "symptoms": [("Headache", 0.80), ("Chest pain", 0.75), ("Shortness of breath", 0.70), ("Dizziness", 0.75)],
+            "prior_probability": 0.01,
+            "symptoms": [
+                ("Headache", 0.80, 0.75),
+                ("Chest pain", 0.75, 0.70),
+                ("Shortness of breath", 0.70, 0.65),
+                ("Dizziness", 0.75, 0.70),
+            ],
             "risks": [("Hypertension history", 0.95), ("Smoking", 0.55), ("Diabetes", 0.60)],
-            "tests": [("Blood Pressure Monitoring", 1, "Serial readings in both arms"), ("12-Lead ECG", 1, "Screen for left ventricular strain or acute ischemia")],
-            "treatments": [("IV Antihypertensive Therapy", 1, "Controlled MAP reduction by max 25% in hour 1"), ("ICU Admission", 2, "Continuous hemodynamic monitoring")],
+            "tests": [
+                ("Blood Pressure Monitoring", 1, "Serial readings in both arms", 0.99, 0.95),
+                ("12-Lead ECG", 1, "Screen for left ventricular strain or acute ischemia", 0.80, 0.85),
+            ],
+            "treatments": [
+                ("IV Antihypertensive Therapy", 1, "Controlled MAP reduction by max 25% in hour 1"),
+                ("ICU Admission", 2, "Continuous hemodynamic monitoring"),
+            ],
         },
     ]
 
@@ -307,30 +369,80 @@ def seed_initial_clinical_data(db: Session, force: bool = False) -> int:
     for cfg in condition_configs:
         cond = repo.get_condition_by_name(cfg["name"])
         if not cond:
-            cond = Condition(name=cfg["name"], description=cfg["description"], severity=cfg["severity"], urgency=cfg["urgency"])
+            cond = Condition(
+                name=cfg["name"],
+                description=cfg["description"],
+                severity=cfg["severity"],
+                urgency=cfg["urgency"],
+                prior_probability=cfg.get("prior_probability"),
+            )
             db.add(cond)
             db.flush()
             count += 1
 
-            for s_name, weight in cfg["symptoms"]:
+            for sym_entry in cfg["symptoms"]:
+                s_name = sym_entry[0]
+                weight = sym_entry[1]
+                sens = sym_entry[2] if len(sym_entry) > 2 else None
                 sym_obj = symptom_map.get(s_name.casefold())
                 if sym_obj:
-                    db.add(ConditionSymptom(condition_id=cond.condition_id, symptom_id=sym_obj.symptom_id, weight=weight, evidence_id=evidence.evidence_id))
+                    db.add(
+                        ConditionSymptom(
+                            condition_id=cond.condition_id,
+                            symptom_id=sym_obj.symptom_id,
+                            weight=weight,
+                            sensitivity=sens,
+                            evidence_id=evidence.evidence_id,
+                        )
+                    )
 
             for r_name, weight in cfg["risks"]:
                 rf_obj = risk_map.get(r_name.casefold())
                 if rf_obj:
-                    db.add(ConditionRiskFactor(condition_id=cond.condition_id, risk_factor_id=rf_obj.risk_factor_id, weight=weight, evidence_id=evidence.evidence_id))
+                    db.add(
+                        ConditionRiskFactor(
+                            condition_id=cond.condition_id,
+                            risk_factor_id=rf_obj.risk_factor_id,
+                            weight=weight,
+                            evidence_id=evidence.evidence_id,
+                        )
+                    )
 
-            for t_name, priority, purpose in cfg["tests"]:
+            for t_entry in cfg["tests"]:
+                t_name = t_entry[0]
+                priority = t_entry[1]
+                purpose = t_entry[2]
+                sens = t_entry[3] if len(t_entry) > 3 else None
+                spec = t_entry[4] if len(t_entry) > 4 else None
                 tst_obj = test_map.get(t_name.casefold())
                 if tst_obj:
-                    db.add(ConditionTest(condition_id=cond.condition_id, test_id=tst_obj.test_id, priority=priority, purpose=purpose, evidence_id=evidence.evidence_id))
+                    db.add(
+                        ConditionTest(
+                            condition_id=cond.condition_id,
+                            test_id=tst_obj.test_id,
+                            priority=priority,
+                            purpose=purpose,
+                            sensitivity=sens,
+                            specificity=spec,
+                            evidence_id=evidence.evidence_id,
+                        )
+                    )
 
             for tx_name, priority, notes in cfg["treatments"]:
                 tx_obj = treatment_map.get(tx_name.casefold())
                 if tx_obj:
-                    db.add(ConditionTreatment(condition_id=cond.condition_id, treatment_id=tx_obj.treatment_id, priority=priority, notes=notes))
+                    db.add(
+                        ConditionTreatment(
+                            condition_id=cond.condition_id,
+                            treatment_id=tx_obj.treatment_id,
+                            priority=priority,
+                            notes=notes,
+                        )
+                    )
+        else:
+            # Update prior_probability if not yet populated
+            if cond.prior_probability is None and cfg.get("prior_probability"):
+                cond.prior_probability = cfg["prior_probability"]
 
     db.commit()
     return count

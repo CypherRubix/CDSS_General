@@ -14,6 +14,8 @@ const state = {
   data: {},
   selectedSymptoms: [],
   selectedRisks: [],
+  selectedNegativeSymptoms: [],
+  completedTests: [],
   results: null,
   error: '',
   loading: false,
@@ -23,6 +25,8 @@ const state = {
   kbQuery: '',
   symptomsQuery: '',
   risksQuery: '',
+  negativeSymptomsQuery: '',
+  completedTestsQuery: '',
 };
 
 const app = document.querySelector('#app');
@@ -261,9 +265,10 @@ async function loadResource(type) {
 function evaluationPage() {
   const symptoms = state.data.symptoms || [];
   const risks = state.data['risk-factors'] || [];
+  const tests = state.data.tests || [];
 
   return `
-    ${pageHead('Evaluation', 'Patient evaluation', 'Select observed symptoms and relevant risk factors to generate a decision-support assessment.')}
+    ${pageHead('Evaluation', 'Patient evaluation', 'Enter observed findings and clinical context for Bayesian diagnostic inference.')}
     ${state.error ? `<div class="error">${escapeHtml(state.error)}</div>` : ''}
 
     <div class="content-grid">
@@ -285,26 +290,46 @@ function evaluationPage() {
           </div>
 
           <div class="form-section">
-            <h3>Symptoms</h3>
+            <h3>Positive Symptoms (Observed Present)</h3>
+            <p style="font-size:12px;color:var(--muted);">Select symptoms confirmed present in the patient.</p>
             ${selector('symptoms', state.selectedSymptoms, symptoms, 'Search symptoms...')}
           </div>
 
           <div class="form-section">
-            <h3>Risk factors</h3>
+            <h3>Risk Factors</h3>
             ${selector('risk-factors', state.selectedRisks, risks, 'Search risk factors...')}
           </div>
 
+          <div class="form-section">
+            <h3>Confirmed Absent Symptoms (Explicit Negatives)</h3>
+            <p style="font-size:12px;color:var(--muted);">Symptoms confirmed NOT present (e.g. ruled out chest pain). Unrecorded symptoms are preserved as neutral missing data.</p>
+            ${selector('negative-symptoms', state.selectedNegativeSymptoms, symptoms, 'Add confirmed absent symptom...')}
+          </div>
+
+          <div class="form-section">
+            <h3>Completed Diagnostic Tests</h3>
+            <p style="font-size:12px;color:var(--muted);">Tests already completed (will be excluded from new recommendations).</p>
+            ${selector('completed-tests', state.completedTests, tests, 'Add completed test to exclude...')}
+          </div>
+
           <div class="form-actions">
-            <button class="pill" type="submit">${state.loading ? 'Evaluating...' : 'Evaluate Patient'}</button>
+            <button class="pill" type="submit">${state.loading ? 'Evaluating...' : 'Evaluate Patient (Bayesian)'}</button>
           </div>
         </form>
       </section>
 
       <aside class="panel">
-        <h2>Knowledge base status</h2>
+        <h2>Inference &amp; Test Selection</h2>
+        <div class="notice" style="margin-top:16px;">
+          <strong>Bayesian Inference:</strong> Calculates posterior condition probabilities from documented priors and sensitivities. Unrecorded findings are not penalized as negatives.
+        </div>
+        <div class="notice" style="margin-top:12px;">
+          <strong>Information Gain:</strong> Diagnostic tests are ranked by expected uncertainty reduction (entropy reduction) across competing candidates.
+        </div>
         <div class="info-list" style="margin-top:22px;">
           <div class="info-item"><span>Symptoms available</span><strong>${symptoms.length}</strong></div>
-          <div class="info-item"><span>Risk factors available</span><strong>${risks.length}</strong></div>
+          <div class="info-item"><span>Risk factors</span><strong>${risks.length}</strong></div>
+          <div class="info-item"><span>Tests available</span><strong>${tests.length}</strong></div>
         </div>
       </aside>
     </div>
@@ -323,7 +348,10 @@ function bindAddButtons(root = document) {
   root.querySelectorAll('[data-add]').forEach((el) => {
     el.onclick = () => {
       const type = el.dataset.add;
-      const key = type === 'symptoms' ? 'selectedSymptoms' : 'selectedRisks';
+      let key = 'selectedSymptoms';
+      if (type === 'risk-factors') key = 'selectedRisks';
+      else if (type === 'negative-symptoms') key = 'selectedNegativeSymptoms';
+      else if (type === 'completed-tests') key = 'completedTests';
       const value = el.dataset.value;
       if (!state[key].includes(value)) {
         state[key].push(value);
@@ -334,7 +362,10 @@ function bindAddButtons(root = document) {
 }
 
 function selector(type, selected, values, placeholder) {
-  const queryKey = type === 'symptoms' ? 'symptomsQuery' : 'risksQuery';
+  let queryKey = 'symptomsQuery';
+  if (type === 'risk-factors') queryKey = 'risksQuery';
+  else if (type === 'negative-symptoms') queryKey = 'negativeSymptomsQuery';
+  else if (type === 'completed-tests') queryKey = 'completedTestsQuery';
   const query = state[queryKey] || '';
 
   return `
@@ -368,6 +399,8 @@ async function submitEvaluation(event) {
   const payload = {
     symptoms: state.selectedSymptoms,
     risk_factors: state.selectedRisks,
+    negative_symptoms: state.selectedNegativeSymptoms || [],
+    completed_tests: state.completedTests || [],
   };
 
   const age = formData.get('age');
@@ -398,10 +431,48 @@ function resultsPage() {
   }
 
   const rows = state.results.ranked_conditions || [];
+  const diffTests = state.results.differential_tests || [];
+  const entropy = state.results.diagnostic_entropy;
+
   return `
-    ${pageHead('Results', 'Evaluation assessment', 'Candidate conditions ranked by stored relationships and severity.', '<button class="pill" data-page="evaluate">New evaluation</button>')}
+    ${pageHead('Results', 'Bayesian Diagnostic Assessment', 'Posterior condition probabilities and intelligent test recommendations based on expected information gain.', '<button class="pill" data-page="evaluate">New evaluation</button>')}
+    
+    <div class="notice" style="margin-bottom:20px;">
+      ${escapeHtml(state.results.disclaimer || '')}
+      ${entropy != null ? `<div style="margin-top:6px;font-size:12px;"><strong>Diagnostic Uncertainty (Entropy):</strong> ${entropy} bits</div>` : ''}
+    </div>
+
+    ${diffTests.length ? `
+      <section class="panel" style="margin-bottom:24px;">
+        <div class="section-head">
+          <div>
+            <h2>Intelligent Diagnostic Test Recommendations</h2>
+            <p>Ranked by Expected Information Gain (uncertainty reduction) across competing candidate conditions.</p>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;margin-top:14px;">
+          ${diffTests.map(t => `
+            <div style="padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <strong style="font-size:14px;">${escapeHtml(t.name)}</strong>
+                <span class="pill small" style="background:var(--green-light);color:var(--green-deep);font-size:11px;font-weight:600;padding:2px 8px;">
+                  ${t.is_information_gain_calculated && t.information_gain != null ? `${t.information_gain} bits Info Gain` : 'Priority ' + t.priority}
+                </span>
+              </div>
+              <p style="margin:6px 0;font-size:12px;color:var(--muted);">${escapeHtml(t.purpose || t.description || '')}</p>
+              ${t.discriminates_between && t.discriminates_between.length ? `
+                <div style="font-size:11px;color:var(--text);margin-top:6px;"><strong>Investigates:</strong> ${escapeHtml(t.discriminates_between.join(', '))}</div>
+              ` : ''}
+              ${t.rationale ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">${escapeHtml(t.rationale)}</div>` : ''}
+              ${t.missing_parameters ? '<div style="font-size:10px;color:var(--accent-orange);margin-top:4px;">Sensitivity/specificity unrecorded; ranked by relational priority.</div>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      </section>
+    ` : ''}
+
     <div class="results-list">
-      ${rows.length ? rows.map((item, index) => resultCard(item, index)).join('') : '<div class="panel empty">No ranked conditions matched the submitted symptoms.</div>'}
+      ${rows.length ? rows.map((item, index) => resultCard(item, index)).join('') : '<div class="panel empty">No candidate conditions matched the submitted findings.</div>'}
     </div>
   `;
 }
@@ -469,25 +540,48 @@ async function submitNewRecord(event) {
 }
 
 function resultCard(item, index) {
-  const percentage = Math.round((item.likelihood_score || 0) * 100);
+  const prob = item.posterior_probability != null ? item.posterior_probability : item.likelihood_score;
+  const percentage = Math.round((prob || 0) * 100);
+  const probLabel = item.is_probability ? 'Posterior Prob (Bayesian)' : 'Heuristic Score';
+
   const detail = `
     <div class="condition-detail">
       <div>
-        <h4>Matched symptoms</h4>
-        <ul class="detail-list">${(item.matched_symptoms || []).map((s) => `<li>${escapeHtml(s.name)} (${s.weight})</li>`).join('') || '<li>None matched</li>'}</ul>
+        <h4>Matched symptoms (Observed)</h4>
+        <ul class="detail-list">${(item.matched_symptoms || []).map((s) => `<li>${escapeHtml(s.name)} <small style="color:var(--muted);">(weight: ${s.weight}${s.probability != null ? `, P=${s.probability.toFixed(2)}` : ''})</small></li>`).join('') || '<li>None matched</li>'}</ul>
       </div>
       <div>
         <h4>Matched risk factors</h4>
-        <ul class="detail-list">${(item.matched_risk_factors || []).map((s) => `<li>${escapeHtml(s.name)} (${s.weight})</li>`).join('') || '<li>None matched</li>'}</ul>
+        <ul class="detail-list">${(item.matched_risk_factors || []).map((s) => `<li>${escapeHtml(s.name)} <small style="color:var(--muted);">(weight: ${s.weight})</small></li>`).join('') || '<li>None matched</li>'}</ul>
+      </div>
+      ${item.absent_symptoms && item.absent_symptoms.length ? `
+        <div>
+          <h4>Confirmed Absent Symptoms</h4>
+          <ul class="detail-list">${item.absent_symptoms.map(s => `<li>${escapeHtml(s.name)} (Excluded)</li>`).join('')}</ul>
+        </div>
+      ` : ''}
+      <div>
+        <h4>Recommended Diagnostic Tests</h4>
+        <ul class="detail-list">
+          ${(item.recommended_tests || []).map((test) => `
+            <li>
+              <strong>${escapeHtml(test.name)}</strong>
+              ${test.is_information_gain_calculated && test.information_gain != null ? `<span class="pill small" style="margin-left:6px;font-size:10px;background:var(--green-light);color:var(--green-deep);">${test.information_gain} bits Info Gain</span>` : `<span class="pill small" style="margin-left:6px;font-size:10px;">Priority ${test.priority}</span>`}
+              ${test.purpose ? `<br><small style="color:var(--muted);">${escapeHtml(test.purpose)}</small>` : ''}
+              ${test.rationale ? `<br><small style="color:var(--text);">${escapeHtml(test.rationale)}</small>` : ''}
+            </li>
+          `).join('') || '<li>None stored</li>'}
+        </ul>
       </div>
       <div>
-        <h4>Recommended tests</h4>
-        <ul class="detail-list">${(item.recommended_tests || []).map((test) => `<li>${escapeHtml(test.name)}</li>`).join('') || '<li>None stored</li>'}</ul>
+        <h4>Potential Treatments</h4>
+        <ul class="detail-list">${(item.treatments || []).map((tx) => `<li><strong>${escapeHtml(tx.name)}</strong> (Priority ${tx.priority})${tx.notes ? `<br><small style="color:var(--muted);">${escapeHtml(tx.notes)}</small>` : ''}</li>`).join('') || '<li>None stored</li>'}</ul>
       </div>
-      <div>
-        <h4>Potential treatments</h4>
-        <ul class="detail-list">${(item.treatments || []).map((tx) => `<li>${escapeHtml(tx.name)}</li>`).join('') || '<li>None stored</li>'}</ul>
-      </div>
+      ${item.explanation ? `
+        <div style="grid-column: 1 / -1; margin-top: 10px; padding: 12px; background: var(--surface); border-radius: 6px; font-size: 12px; border: 1px solid var(--line);">
+          <strong>Inference Explanation:</strong> ${escapeHtml(item.explanation)}
+        </div>
+      ` : ''}
     </div>
   `;
 
@@ -496,9 +590,9 @@ function resultCard(item, index) {
       <div class="condition-summary" data-expand="${index}">
         <div>
           <h3>${escapeHtml(item.condition)}</h3>
-          <small>Priority score: ${item.priority_score}</small>
+          <small>Clinical Triage Priority: ${item.priority_score}</small>
         </div>
-        <div class="metric"><span>Likelihood</span><strong>${percentage}%</strong></div>
+        <div class="metric"><span>${probLabel}</span><strong>${percentage}%</strong></div>
         <div class="metric"><span>Severity</span><strong>${item.severity || '—'}/10</strong></div>
         <div class="metric"><span>Urgency</span><strong>${item.urgency || '—'}/10</strong></div>
       </div>
@@ -613,7 +707,10 @@ function bindEvents() {
   document.querySelectorAll('[data-remove]').forEach((el) => {
     el.onclick = () => {
       const type = el.dataset.remove;
-      const key = type === 'symptoms' ? 'selectedSymptoms' : 'selectedRisks';
+      let key = 'selectedSymptoms';
+      if (type === 'risk-factors') key = 'selectedRisks';
+      else if (type === 'negative-symptoms') key = 'selectedNegativeSymptoms';
+      else if (type === 'completed-tests') key = 'completedTests';
       const value = el.dataset.value;
       state[key] = state[key].filter((item) => item !== value);
       render();
@@ -623,12 +720,26 @@ function bindEvents() {
   document.querySelectorAll('[data-search]').forEach((el) => {
     el.oninput = (event) => {
       const type = event.target.dataset.search;
-      const key = type === 'symptoms' ? 'symptomsQuery' : 'risksQuery';
-      const selectedKey = type === 'symptoms' ? 'selectedSymptoms' : 'selectedRisks';
+      let key = 'symptomsQuery';
+      let selectedKey = 'selectedSymptoms';
+      let dataKey = 'symptoms';
+      if (type === 'risk-factors') {
+        key = 'risksQuery';
+        selectedKey = 'selectedRisks';
+        dataKey = 'risk-factors';
+      } else if (type === 'negative-symptoms') {
+        key = 'negativeSymptomsQuery';
+        selectedKey = 'selectedNegativeSymptoms';
+        dataKey = 'symptoms';
+      } else if (type === 'completed-tests') {
+        key = 'completedTestsQuery';
+        selectedKey = 'completedTests';
+        dataKey = 'tests';
+      }
       state[key] = event.target.value;
       const suggestions = document.querySelector(`[data-suggestions="${type}"]`);
       if (suggestions) {
-        suggestions.innerHTML = suggestionMarkup(type, state[selectedKey], state.data[type] || [], state[key]);
+        suggestions.innerHTML = suggestionMarkup(type, state[selectedKey], state.data[dataKey] || [], state[key]);
         bindAddButtons(suggestions);
       }
     };
@@ -659,6 +770,7 @@ async function init() {
   try {
     state.data.symptoms = await api('/symptoms');
     state.data['risk-factors'] = await api('/risk-factors');
+    state.data.tests = await api('/tests');
     state.stats = await api('/stats');
   } catch (error) {
     state.error = error.message;

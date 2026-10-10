@@ -86,6 +86,12 @@ def init_db() -> None:
                     ("relationship_description", "TEXT NULL"),
                     ("evidence_id", "INT NULL DEFAULT NULL"),
                 ],
+                "condition_tests": [
+                    ("sensitivity", "DECIMAL(5,2) NULL DEFAULT NULL"),
+                    ("specificity", "DECIMAL(5,2) NULL DEFAULT NULL"),
+                    ("cost", "DECIMAL(8,2) NULL DEFAULT NULL"),
+                    ("evidence_id", "INT NULL DEFAULT NULL"),
+                ],
             }
             for table_name, col_defs in migrations.items():
                 if table_name in existing_tables:

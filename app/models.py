@@ -134,6 +134,9 @@ class ConditionTest(Base):
     test_id: Mapped[int] = mapped_column(ForeignKey("tests.test_id", ondelete="CASCADE"), primary_key=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     purpose: Mapped[str | None] = mapped_column(Text)
+    sensitivity: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True, default=None)
+    specificity: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True, default=None)
+    cost: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True, default=None)
     evidence_id: Mapped[int | None] = mapped_column(ForeignKey("evidence.evidence_id", ondelete="SET NULL"), index=True, nullable=True)
 
     condition: Mapped[Condition] = relationship(back_populates="tests")

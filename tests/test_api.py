@@ -289,3 +289,38 @@ def test_seed_demo_and_frontend_serving() -> None:
     finally:
         app.dependency_overrides.clear()
         Base.metadata.drop_all(engine)
+
+
+def test_bayesian_and_differential_tests_api() -> None:
+    engine = build_test_db()
+    session_factory = sessionmaker(bind=engine)
+    app.dependency_overrides[get_db] = override_db_factory(session_factory)
+    try:
+        with TestClient(app) as client:
+            client.post("/seed-demo")
+            eval_resp = client.post(
+                "/evaluate",
+                json={
+                    "symptoms": ["Fever", "Cough", "Shortness of breath"],
+                    "risk_factors": ["Smoking"],
+                    "negative_symptoms": ["Wheezing"],
+                    "completed_tests": ["Pulse Oximetry"],
+                },
+            )
+            assert eval_resp.status_code == 200
+            body = eval_resp.json()
+            assert "ranked_conditions" in body
+            assert len(body["ranked_conditions"]) > 0
+            top = body["ranked_conditions"][0]
+            assert top["condition"] == "Pneumonia"
+            assert "posterior_probability" in top
+            assert top["posterior_probability"] is not None
+            assert top["posterior_probability"] > 0
+            assert "differential_tests" in body
+            # Pulse Oximetry was marked as completed, so it should not appear in differential_tests
+            diff_names = [t["name"] for t in body["differential_tests"]]
+            assert "Pulse Oximetry" not in diff_names
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(engine)
+
