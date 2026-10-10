@@ -22,6 +22,7 @@ class ConditionMatch:
     posterior_probability: float = 0.0
     prior_probability: float = 0.0
     is_probability: bool = True
+    is_high_severity_risk: bool = False
     absent_symptoms: list[Any] = field(default_factory=list)
     absent_risk_factors: list[Any] = field(default_factory=list)
     unrecorded_findings: list[str] = field(default_factory=list)
@@ -44,17 +45,19 @@ def rank_conditions(
     supplied_risk_factors: list[str],
     negative_symptoms: list[str] | None = None,
     negative_risk_factors: list[str] | None = None,
+    test_results: list[Any] | None = None,
     use_bayesian: bool = True,
 ) -> list[ConditionMatch]:
     """
     Ranks candidate conditions using Bayesian diagnostic inference while
-    preserving the ConditionMatch interface for existing components.
+    preserving the ConditionMatch interface for existing components and supporting
+    sequential test results.
     """
     normalized_symptoms = {_normalize_name(item) for item in supplied_symptoms if item and str(item).strip()}
     normalized_risk_factors = {_normalize_name(item) for item in supplied_risk_factors if item and str(item).strip()}
 
     if not use_bayesian:
-        # Fallback heuristic path if explicitly requested
+        # Fallback baseline heuristic path
         ranked_heuristic: list[ConditionMatch] = []
         for condition in conditions:
             matched_syms = [
@@ -93,6 +96,7 @@ def rank_conditions(
                     severity=sev,
                     urgency=urg,
                     priority_score=prio,
+                    is_high_severity_risk=(sev >= 8),
                     explanation=(
                         f"Heuristic score based on relational weights. Matched symptom score: {sym_score:.2f}, "
                         f"risk score: {risk_score:.2f}."
@@ -105,13 +109,14 @@ def rank_conditions(
         ranked_heuristic.sort(key=lambda item: (-item.priority_score, -item.likelihood_score, item.condition.name.casefold()))
         return ranked_heuristic
 
-    # Execute Bayesian inference
+    # Execute Bayesian inference with optional sequential test results
     bayesian_results = run_bayesian_inference(
         conditions=conditions,
         positive_symptoms=supplied_symptoms,
         positive_risk_factors=supplied_risk_factors,
         negative_symptoms=negative_symptoms,
         negative_risk_factors=negative_risk_factors,
+        test_results=test_results,
     )
 
     ranked: list[ConditionMatch] = []
@@ -126,8 +131,8 @@ def rank_conditions(
             rel for rel in cond.risk_factors if rel.risk_factor and _normalize_name(rel.risk_factor.name) in normalized_risk_factors
         ]
 
-        # Only retain candidates that have positive evidence or substantial posterior probability (> 1%)
-        if not matched_symptoms_rels and b_res.posterior_probability < 0.01:
+        # Only retain candidates that have positive evidence, high harm potential, or substantial posterior (> 1%)
+        if not matched_symptoms_rels and b_res.posterior_probability < 0.01 and not b_res.is_high_severity_risk:
             continue
 
         sym_score = len(matched_symptoms_rels) / max(len(cond.symptoms), 1)
@@ -144,6 +149,7 @@ def rank_conditions(
                 severity=b_res.severity,
                 urgency=b_res.urgency,
                 priority_score=b_res.priority_score,
+                is_high_severity_risk=b_res.is_high_severity_risk,
                 explanation=b_res.explanation,
                 posterior_probability=b_res.posterior_probability,
                 prior_probability=b_res.prior_probability,

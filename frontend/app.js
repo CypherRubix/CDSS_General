@@ -16,7 +16,11 @@ const state = {
   selectedRisks: [],
   selectedNegativeSymptoms: [],
   completedTests: [],
+  testHistory: [], // list of { test_name, result }
+  sequentialStep: null,
   results: null,
+  benchmarkResults: null,
+  benchmarkLoading: false,
   error: '',
   loading: false,
   addType: 'conditions',
@@ -82,6 +86,7 @@ function titleBar() {
         <a href="#" data-page="knowledge">Knowledge Base</a>
         <a href="#" data-page="add">Add Records</a>
         <a href="#" data-page="evaluate">Evaluation</a>
+        <a href="#" data-page="benchmark">Research Benchmarks</a>
       </nav>
 
       <div class="header-actions">
@@ -111,6 +116,8 @@ function render() {
         ? evaluationPage()
         : state.page === 'results'
           ? resultsPage()
+          : state.page === 'benchmark'
+            ? benchmarkPage()
           : state.page === 'add'
             ? addRecordsPage()
           : state.page === 'knowledge'
@@ -433,6 +440,7 @@ function resultsPage() {
   const rows = state.results.ranked_conditions || [];
   const diffTests = state.results.differential_tests || [];
   const entropy = state.results.diagnostic_entropy;
+  const history = state.testHistory || [];
 
   return `
     ${pageHead('Results', 'Bayesian Diagnostic Assessment', 'Posterior condition probabilities and intelligent test recommendations based on expected information gain.', '<button class="pill" data-page="evaluate">New evaluation</button>')}
@@ -441,6 +449,25 @@ function resultsPage() {
       ${escapeHtml(state.results.disclaimer || '')}
       ${entropy != null ? `<div style="margin-top:6px;font-size:12px;"><strong>Diagnostic Uncertainty (Entropy):</strong> ${entropy} bits</div>` : ''}
     </div>
+
+    ${history.length ? `
+      <section class="panel" style="margin-bottom:24px;background:#fbfdfa;border-left:4px solid var(--green-deep);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <h3 style="margin:0 0 4px 0;font-size:16px;">Sequential Diagnostic Loop History</h3>
+            <small style="color:var(--muted);">Observed diagnostic test outcomes updating condition posteriors iteratively.</small>
+          </div>
+          <button class="pill small pill-light" id="btn-reset-sequential" style="font-size:11px;padding:4px 10px;">Reset Tests</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+          ${history.map(h => `
+            <span class="choice" style="background:${h.result === 'Positive' ? '#2e5b32' : '#576059'};font-size:12px;padding:6px 10px;">
+              ${escapeHtml(h.test_name)}: <strong>${escapeHtml(h.result)}</strong>
+            </span>
+          `).join('')}
+        </div>
+      </section>
+    ` : ''}
 
     ${diffTests.length ? `
       <section class="panel" style="margin-bottom:24px;">
@@ -465,6 +492,12 @@ function resultsPage() {
               ` : ''}
               ${t.rationale ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">${escapeHtml(t.rationale)}</div>` : ''}
               ${t.missing_parameters ? '<div style="font-size:10px;color:var(--accent-orange);margin-top:4px;">Sensitivity/specificity unrecorded; ranked by relational priority.</div>' : ''}
+              
+              <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);display:flex;align-items:center;gap:8px;">
+                <span style="font-size:11px;color:var(--muted);">Record Outcome:</span>
+                <button class="pill small" data-seq-test="${escapeHtml(t.name)}" data-seq-outcome="Positive" style="padding:3px 10px;font-size:11px;background:#326d36;">+ Positive</button>
+                <button class="pill small" data-seq-test="${escapeHtml(t.name)}" data-seq-outcome="Negative" style="padding:3px 10px;font-size:11px;background:#6a736d;">- Negative</button>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -653,9 +686,138 @@ function knowledgePage(type = 'conditions') {
   `;
 }
 
+function benchmarkPage() {
+  const data = state.benchmarkResults;
+  const runBtn = `<button class="pill" id="btn-run-benchmark" ${state.benchmarkLoading ? 'disabled' : ''}>${state.benchmarkLoading ? 'Running...' : 'Run Benchmark Evaluation'}</button>`;
+  return `
+    ${pageHead(
+      'Research Benchmarks',
+      'Model Evaluation & Comparison',
+      'Rigorous experimental comparison of Model A (Legacy Heuristic), Model B (Bayesian + Info Gain), and Model C (Sequential Uncertainty & Severity-Aware CDSS).',
+      runBtn
+    )}
+
+    <div class="notice" style="margin-bottom:24px;">
+      <strong>Research Evaluation Framework:</strong> Evaluates diagnostic ranking metrics across standardized validation cases with known ground truths. Top-1 Accuracy, Top-3 Accuracy, Mean Reciprocal Rank (MRR), Brier Score, Entropy Reduction, High-Severity Recall, and Test Efficiency are computed.
+    </div>
+
+    ${state.benchmarkLoading ? '<div class="panel loading">Running benchmark suite across clinical test cases...</div>' : ''}
+
+    ${data ? `
+      <section class="panel" style="margin-bottom:24px;">
+        <h2>Benchmark Results (Case Count: ${data.case_count})</h2>
+        <p style="margin-bottom:16px;">Direct comparative analysis across evaluation metrics:</p>
+        
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Model Architecture</th>
+                <th>Top-1 Accuracy</th>
+                <th>Top-3 Accuracy</th>
+                <th>Mean Reciprocal Rank (MRR)</th>
+                <th>Brier Score (Calibration)</th>
+                <th>Mean Entropy Reduction</th>
+                <th>High-Severity Recall</th>
+                <th>Avg Tests Required</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Model A: Baseline Heuristic</strong></td>
+                <td>${(data.model_a_baseline.top_1_accuracy * 100).toFixed(1)}%</td>
+                <td>${(data.model_a_baseline.top_3_accuracy * 100).toFixed(1)}%</td>
+                <td>${data.model_a_baseline.mean_reciprocal_rank.toFixed(3)}</td>
+                <td>${data.model_a_baseline.mean_brier_score != null ? data.model_a_baseline.mean_brier_score.toFixed(3) : 'N/A (Heuristic)'}</td>
+                <td>${data.model_a_baseline.mean_entropy_reduction != null ? data.model_a_baseline.mean_entropy_reduction.toFixed(3) + ' bits' : 'N/A'}</td>
+                <td>${(data.model_a_baseline.high_severity_recall * 100).toFixed(1)}%</td>
+                <td>N/A (One-shot)</td>
+              </tr>
+              <tr style="background:#f7fbf5;">
+                <td><strong>Model B: Bayesian + Info Gain</strong></td>
+                <td><strong>${(data.model_b_bayesian_ig.top_1_accuracy * 100).toFixed(1)}%</strong></td>
+                <td>${(data.model_b_bayesian_ig.top_3_accuracy * 100).toFixed(1)}%</td>
+                <td>${data.model_b_bayesian_ig.mean_reciprocal_rank.toFixed(3)}</td>
+                <td>${data.model_b_bayesian_ig.mean_brier_score != null ? data.model_b_bayesian_ig.mean_brier_score.toFixed(3) : 'N/A'}</td>
+                <td>${data.model_b_bayesian_ig.mean_entropy_reduction != null ? data.model_b_bayesian_ig.mean_entropy_reduction.toFixed(3) + ' bits' : '0.000 bits'}</td>
+                <td>${(data.model_b_bayesian_ig.high_severity_recall * 100).toFixed(1)}%</td>
+                <td>N/A (One-shot)</td>
+              </tr>
+              <tr style="background:#eef8e8;border-left:4px solid var(--green-deep);">
+                <td><strong>Model C: Sequential Adaptive CDSS</strong></td>
+                <td><strong style="color:var(--green-deep);font-size:15px;">${(data.model_c_sequential_cdss.top_1_accuracy * 100).toFixed(1)}%</strong></td>
+                <td><strong>${(data.model_c_sequential_cdss.top_3_accuracy * 100).toFixed(1)}%</strong></td>
+                <td><strong>${data.model_c_sequential_cdss.mean_reciprocal_rank.toFixed(3)}</strong></td>
+                <td><strong>${data.model_c_sequential_cdss.mean_brier_score != null ? data.model_c_sequential_cdss.mean_brier_score.toFixed(3) : 'N/A'}</strong></td>
+                <td><strong>${data.model_c_sequential_cdss.mean_entropy_reduction != null ? data.model_c_sequential_cdss.mean_entropy_reduction.toFixed(3) + ' bits' : 'N/A'}</strong></td>
+                <td><strong style="color:var(--green-deep);">${(data.model_c_sequential_cdss.high_severity_recall * 100).toFixed(1)}%</strong></td>
+                <td><strong>${data.model_c_sequential_cdss.avg_tests_administered != null ? data.model_c_sequential_cdss.avg_tests_administered.toFixed(1) : '1.0'}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ` : !state.benchmarkLoading ? `
+      <section class="panel empty">
+        <p>No benchmark run completed yet. Click <strong>Run Benchmark Evaluation</strong> to execute the automated suite.</p>
+      </section>
+    ` : ''}
+  `;
+}
+
 function toast(message) {
   document.body.insertAdjacentHTML('beforeend', `<div class="toast">${escapeHtml(message)}</div>`);
   setTimeout(() => document.querySelector('.toast')?.remove(), 3000);
+}
+
+async function recordSequentialTest(testName, outcome) {
+  if (!state.testHistory) state.testHistory = [];
+  state.testHistory.push({ test_name: testName, result: outcome });
+  if (!state.completedTests.includes(testName)) {
+    state.completedTests.push(testName);
+  }
+
+  state.loading = true;
+  render();
+
+  try {
+    const payload = {
+      patient_input: {
+        symptoms: state.selectedSymptoms,
+        risk_factors: state.selectedRisks,
+        negative_symptoms: state.selectedNegativeSymptoms || [],
+        completed_tests: state.completedTests || [],
+      },
+      test_results: state.testHistory,
+    };
+    const seqResponse = await api('/evaluate/sequential', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    state.sequentialStep = seqResponse;
+    state.results = seqResponse.evaluation;
+    toast(`Recorded ${outcome} for ${testName}. Diagnosis updated.`);
+  } catch (err) {
+    toast(`Error updating sequential evaluation: ${err.message}`);
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function runBenchmarkSuite() {
+  state.benchmarkLoading = true;
+  render();
+  try {
+    const res = await api('/research/benchmark');
+    state.benchmarkResults = res;
+    toast('Research benchmark completed successfully.');
+  } catch (err) {
+    toast(`Benchmark failed: ${err.message}`);
+  } finally {
+    state.benchmarkLoading = false;
+    render();
+  }
 }
 
 function bindEvents() {
@@ -681,6 +843,11 @@ function bindEvents() {
           loadResource('risk-factors');
         }
       }
+      if (page === 'benchmark') {
+        if (!state.benchmarkResults && !state.benchmarkLoading) {
+          runBenchmarkSuite();
+        }
+      }
       if (page.startsWith('knowledge:')) {
         const key = page.split(':')[1] || 'conditions';
         if (!state.data[key]) {
@@ -693,6 +860,21 @@ function bindEvents() {
 
   document.querySelector('#evaluation-form')?.addEventListener('submit', submitEvaluation);
   document.querySelector('#add-record-form')?.addEventListener('submit', submitNewRecord);
+  document.querySelector('#btn-run-benchmark')?.addEventListener('click', runBenchmarkSuite);
+  document.querySelector('#btn-reset-sequential')?.addEventListener('click', () => {
+    state.testHistory = [];
+    state.completedTests = [];
+    toast('Test history reset.');
+    render();
+  });
+
+  document.querySelectorAll('[data-seq-test]').forEach((btn) => {
+    btn.onclick = () => {
+      const testName = btn.dataset.seqTest;
+      const outcome = btn.dataset.seqOutcome;
+      recordSequentialTest(testName, outcome);
+    };
+  });
 
   document.querySelectorAll('[data-add-type]').forEach((el) => {
     el.onclick = () => {

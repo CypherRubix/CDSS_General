@@ -23,6 +23,8 @@ class DiagnosticTestEvaluation:
     cost: float | None
     information_gain: float | None  # in bits
     expected_entropy_reduction: float | None
+    safety_priority_boost: float | None
+    composite_utility_score: float | None
     is_information_gain_calculated: bool
     missing_parameters: bool
     rationale: str
@@ -42,20 +44,22 @@ def select_and_rank_tests(
     conditions_with_probabilities: list[tuple[Condition, float]],
     all_tests: list[Test],
     completed_test_names: list[str] | None = None,
+    severity_weight: float = 0.40,
+    cost_weight: float = 0.0,
 ) -> list[DiagnosticTestEvaluation]:
     """
-    Evaluates and ranks candidate diagnostic tests using Expected Information Gain (IG).
+    Evaluates and ranks candidate diagnostic tests using Expected Information Gain (IG)
+    combined with severity safety constraints.
 
     IG(T) = H(C) - E[H(C | T)]
-    where H(C) is the current Shannon diagnostic entropy across candidate conditions,
-    and E[H(C | T)] is the expected posterior entropy after observing the test result.
+    where H(C) is current Shannon diagnostic entropy across candidate conditions,
+    and E[H(C | T)] is expected posterior entropy after observing the test result.
 
-    Rules & Guarantees:
-    1. Tests already completed by the patient are excluded.
-    2. Tests with documented sensitivity/specificity are ranked by true Information Gain.
-    3. Tests lacking clinical performance parameters are flagged with missing_parameters=True,
-       and uncalibrated heuristics are not described as validated information gain.
-    4. Explains which competing conditions each test helps distinguish.
+    Safety-Aware Adjustment:
+    Composite Utility = IG(T) + severity_weight * Safety_Boost - cost_weight * Cost
+    where Safety_Boost = max_{c in Target(T)} [ (Severity(c) / 10) * P(c) ]
+    ensures high-severity conditions (e.g. Pneumonia, Hypertensive crisis) receive safety-priority
+    diagnostic testing even if entropy alone favors another test.
     """
     if not conditions_with_probabilities:
         return []
@@ -78,7 +82,6 @@ def select_and_rank_tests(
     prior_entropy = calculate_entropy(cand_probs)
 
     # Build index of condition-test relations
-    # Map test_id -> list of (condition, relation)
     test_relations_map: dict[int, list[tuple[Condition, ConditionTest]]] = {}
     for cond, _ in norm_candidates:
         for rel in cond.tests:
@@ -95,12 +98,24 @@ def select_and_rank_tests(
 
         relations = test_relations_map.get(test.test_id, [])
         if not relations:
-            # Test not indicated for any of the active candidate conditions
+            # Test not indicated for any active candidate conditions
             continue
 
         associated_condition_names = sorted({cond.name for cond, _ in relations})
         best_priority = min(rel.priority for _, rel in relations)
         purpose = relations[0][1].purpose or test.purpose
+
+        # Compute safety priority boost for severe conditions targeted by test
+        # Safety_Boost = max_{target c} [ (Severity(c) / 10) * P(c) ]
+        safety_boost = 0.0
+        for cond, _ in relations:
+            cond_prob = next((p for c, p in norm_candidates if c.condition_id == cond.condition_id), 0.0)
+            sev = int(cond.severity or 1)
+            boost = (sev / 10.0) * cond_prob
+            if boost > safety_boost:
+                safety_boost = boost
+
+        cost_val = next((float(rel.cost) for _, rel in relations if rel.cost is not None), None)
 
         # Check sensitivity/specificity availability across candidate conditions
         has_performance_data = any(
@@ -108,17 +123,11 @@ def select_and_rank_tests(
             for _, rel in relations
         )
 
-        cost_val = next((float(rel.cost) for _, rel in relations if rel.cost is not None), None)
-
         if has_performance_data and len(norm_candidates) > 1:
-            # Compute P(T = + | C_k) for each candidate condition
-            # Default specificity when not specified is conservatively assumed 0.85
-            # Default sensitivity for target condition is rel.sensitivity or 0.80
             p_pos_given_cond: list[float] = []
             discriminates: list[str] = []
 
             for cond, _ in norm_candidates:
-                # Find if cond has relation to this test
                 rel_match = next((rel for c, rel in relations if c.condition_id == cond.condition_id), None)
                 if rel_match and rel_match.sensitivity is not None:
                     sens = float(rel_match.sensitivity)
@@ -126,11 +135,9 @@ def select_and_rank_tests(
                     p_pos_given_cond.append(min(max(sens, 0.01), 0.99))
                     discriminates.append(f"{cond.name} (Sens: {sens:.0%})")
                 elif rel_match:
-                    # In relation but uncalibrated sensitivity
                     p_pos_given_cond.append(0.80)
                     discriminates.append(f"{cond.name} (Indicated)")
                 else:
-                    # Condition not targeted by test: false positive rate (1 - specificity)
                     spec = 0.90
                     fpr = 1.0 - spec
                     p_pos_given_cond.append(fpr)
@@ -153,13 +160,17 @@ def select_and_rank_tests(
             info_gain = max(0.0, prior_entropy - expected_post_entropy)
             info_gain_bits = round(info_gain, 4)
 
+            # Composite utility combines pure information gain with safety constraint
+            composite_utility = round(info_gain_bits + (severity_weight * safety_boost), 4)
+
             rep_rel = relations[0][1]
             sens_val = float(rep_rel.sensitivity) if rep_rel.sensitivity is not None else None
             spec_val = float(rep_rel.specificity) if rep_rel.specificity is not None else None
 
+            safety_note = f" (Safety boost: +{safety_boost:.2f})" if safety_boost > 0.05 else ""
             rationale = (
-                f"Calculated expected information gain of {info_gain_bits:.3f} bits. "
-                f"Helps differentiate between {', '.join(discriminates[:3])}."
+                f"Expected information gain of {info_gain_bits:.3f} bits{safety_note}. "
+                f"Helps differentiate {', '.join(discriminates[:3])}."
             )
 
             evaluations.append(
@@ -176,6 +187,8 @@ def select_and_rank_tests(
                     cost=cost_val,
                     information_gain=info_gain_bits,
                     expected_entropy_reduction=info_gain_bits,
+                    safety_priority_boost=round(safety_boost, 4),
+                    composite_utility_score=composite_utility,
                     is_information_gain_calculated=True,
                     missing_parameters=False,
                     rationale=rationale,
@@ -198,6 +211,8 @@ def select_and_rank_tests(
                     cost=cost_val,
                     information_gain=None,
                     expected_entropy_reduction=None,
+                    safety_priority_boost=round(safety_boost, 4),
+                    composite_utility_score=round(safety_boost, 4),
                     is_information_gain_calculated=False,
                     missing_parameters=True,
                     rationale=(
@@ -209,17 +224,16 @@ def select_and_rank_tests(
             )
 
     # Sort tests:
-    # 1. Tests with calculated information gain first (highest IG first)
+    # 1. Tests with calculated composite utility first (highest composite utility first)
     # 2. Then by relation priority (lowest priority number = higher priority)
     # 3. Then by name
     evaluations.sort(
         key=lambda t: (
             0 if t.is_information_gain_calculated else 1,
-            -(t.information_gain or 0.0),
+            -(t.composite_utility_score or t.information_gain or 0.0),
             t.priority,
             t.name.casefold(),
         )
     )
 
     return evaluations
-
