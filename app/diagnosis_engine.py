@@ -238,7 +238,7 @@ def evaluate_patient(db, patient: PatientInput) -> EvaluationResponse:
 
     return EvaluationResponse(
         disclaimer=(
-            "Research Prototype: Combines Bayesian inference, explicit uncertainty estimation (entropy), "
+            "Clinical decision-support prototype: Combines Bayesian inference, diagnostic uncertainty estimation (entropy), "
             "independent severity/urgency assessment, and Information Gain test selection. "
             "Model parameters reflect database configuration and are not clinically validated."
         ),

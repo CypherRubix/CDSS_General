@@ -285,25 +285,6 @@ class SequentialStepResponse(BaseModel):
     stopping_rationale: str = ""
 
 
-class ModelBenchmarkMetrics(BaseModel):
-    model_name: str
-    top1_accuracy: float
-    top3_accuracy: float
-    mean_reciprocal_rank: float
-    brier_score: float
-    average_tests_recommended: float
-    average_residual_entropy: float
-    high_severity_recall: float
-    missing_data_resilience_score: float
-
-
-class ResearchBenchmarkResponse(BaseModel):
-    benchmark_cases_count: int
-    models_evaluated: list[ModelBenchmarkMetrics]
-    comparative_summary: str
-    evaluation_disclaimer: str
-
-
 class KnowledgeStatsResponse(BaseModel):
     conditions: int
     symptoms: int

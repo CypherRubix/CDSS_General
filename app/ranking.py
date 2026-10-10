@@ -57,7 +57,7 @@ def rank_conditions(
     normalized_risk_factors = {_normalize_name(item) for item in supplied_risk_factors if item and str(item).strip()}
 
     if not use_bayesian:
-        # Fallback baseline heuristic path
+        # Optional heuristic fallback for callers that disable Bayesian inference
         ranked_heuristic: list[ConditionMatch] = []
         for condition in conditions:
             matched_syms = [

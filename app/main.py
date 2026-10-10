@@ -22,7 +22,6 @@ from .condition_management import (
 from .database import SessionLocal, get_db, init_db
 from .diagnosis_engine import evaluate_patient
 from .models import Condition, ConditionRiskFactor, ConditionSymptom, ConditionTest, ConditionTreatment, RiskFactor, Symptom, Test, Treatment
-from .research_evaluation import run_research_benchmark
 from .schemas import (
     CompleteConditionRequest,
     ConditionCreate,
@@ -40,7 +39,6 @@ from .schemas import (
     EvaluationResponse,
     KnowledgeStatsResponse,
     PatientInput,
-    ResearchBenchmarkResponse,
     ResourceResponse,
     RiskFactorCreate,
     SequentialEvaluationRequest,
@@ -396,11 +394,6 @@ def evaluate(patient: PatientInput, db: Session = Depends(get_db)) -> Evaluation
 @app.post("/evaluate/sequential", response_model=SequentialStepResponse)
 def evaluate_sequential_step(payload: SequentialEvaluationRequest, db: Session = Depends(get_db)) -> SequentialStepResponse:
     return run_sequential_step(db, payload)
-
-
-@app.get("/research/benchmark", response_model=ResearchBenchmarkResponse)
-def get_research_benchmark(db: Session = Depends(get_db)) -> ResearchBenchmarkResponse:
-    return run_research_benchmark(db)
 
 
 @app.get("/stats", response_model=KnowledgeStatsResponse)

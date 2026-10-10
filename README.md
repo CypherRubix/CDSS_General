@@ -1,8 +1,8 @@
 # Clinical Decision Support System
 
-This project implements a physician-support backend for a normalized CDSS knowledge base. It stores conditions, symptoms, risk factors, tests, and treatments in MySQL-compatible SQLAlchemy models and exposes the core APIs needed to rank candidate diagnoses from patient information.
+This project implements a physician-support backend for a normalized CDSS knowledge base. It stores conditions, symptoms, risk factors, tests, and treatments in MySQL-compatible SQLAlchemy models and uses Bayesian inference to rank candidate diagnoses, estimate uncertainty, assess severity and urgency separately, recommend useful tests, and update results as test findings are entered.
 
-This is not a medical diagnostic engine and it is not a clinically validated probability model. It only combines relationships and weights explicitly stored in the database.
+This is not a medical diagnostic engine or a clinically validated probability model. Estimates use database-configured priors and finding/test parameters where available; bounded proxies or defaults may be used when calibrated parameters are unavailable.
 
 ## 1. Database setup
 
@@ -114,7 +114,7 @@ Structured risk factors are normalized to the risk-factor names provided in the 
 
 ```json
 {
-  "disclaimer": "This is an initial software ranking model for physician support only; it is not a medically validated diagnostic probability model.",
+  "disclaimer": "Clinical decision-support prototype: Bayesian estimates and recommendations are not clinically validated.",
   "ranked_conditions": [
     {
       "condition": "Pneumonia",
@@ -150,7 +150,7 @@ Structured risk factors are normalized to the risk-factor names provided in the 
           "associated_condition": "Pneumonia"
         }
       ],
-      "explanation": "This result is based on the weighted relationship values explicitly stored for the condition, not a medically validated probability model."
+      "explanation": "Posterior probability is based on the recorded patient findings and condition parameters; some values may be uncalibrated proxies."
     }
   ]
 }
@@ -167,21 +167,13 @@ Structured risk factors are normalized to the risk-factor names provided in the 
 }
 ```
 
-## 10. Explanation of the ranking algorithm
+## 10. Diagnostic inference and test selection
 
-The ranking is intentionally transparent:
+The evaluation endpoint uses Bayesian inference to rank conditions from recorded positive and negative findings, risk factors, and entered test results. It returns posterior probabilities, supporting and conflicting evidence, parameter limitations, and posterior entropy as an uncertainty estimate. Severity and urgency are assessed separately from diagnostic likelihood.
 
-- It matches supplied symptoms to `condition_symptoms` rows.
-- It matches supplied risk factors to `condition_risk_factors` rows.
-- It computes a normalized symptom score as the matched symptom weight divided by the total relevant symptom weight for the condition.
-- It computes a normalized risk-factor score as the matched risk-factor weight divided by the total risk-factor weight for the condition.
-- It combines them with configurable weights:
+Where sufficient condition-test performance parameters are available, test recommendations can include expected information gain, calculated as the expected reduction in diagnostic entropy. If information gain cannot be calculated because performance parameters are missing, the system identifies that limitation and falls back to the recorded relationship priority. Entered test results can be submitted through the sequential evaluation endpoint to update the diagnostic distribution and next recommendations.
 
-```text
-final_score = (symptom_score * 0.70) + (risk_factor_score * 0.30)
-```
-
-These constants are stored in the ranking module and are easy to adjust later as evidence or clinical logic is added.
+Clinical parameters are taken from database records. Where calibrated probabilities are unavailable, the system may use documented proxies; these estimates are not clinically validated and should be interpreted accordingly. An optional heuristic ranking path remains available for callers that explicitly disable Bayesian inference; it is not used as a model-comparison baseline.
 
 ## 11. Explanation of severity and urgency
 
@@ -194,9 +186,7 @@ The priority score is a software prioritization signal, not a medically validate
 
 ## 12. Important warning
 
-The scoring model is an initial software model and is NOT a medically validated diagnostic probability model.
-
-It is only intended to make stored clinical relationships and weights explainable, traceable, and easy to extend with future evidence sources, Bayesian logic, likelihood ratios, audit logging, patient records, and authentication.
+This software is a decision-support prototype, not a diagnostic or triage authority. Its probability parameters may include uncalibrated proxies, and available evidence can be incomplete. Clinicians must interpret results using appropriate clinical judgment and local guidance; recommendations do not replace professional assessment.
 
 ## 13. Tests
 
